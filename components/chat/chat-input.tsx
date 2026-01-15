@@ -39,12 +39,12 @@ export function ChatInput({ onSend, disabled, onTyping, onStopTyping }: ChatInpu
   }, [onTyping, onStopTyping]);
 
   return (
-    <div className="p-4 border-t border-slate-100 bg-white">
-      <div className="flex items-center gap-2 max-w-5xl mx-auto">
-        <div className="flex items-center gap-1">
+    <div className="p-5 border-t border-slate-200/60 bg-white/80 backdrop-blur-xl">
+      <div className="flex items-center gap-3 max-w-5xl mx-auto">
+        <div className="flex items-center gap-2">
           <button 
             disabled={disabled}
-            className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <ImageIcon className="w-5 h-5" />
           </button>
@@ -68,7 +68,7 @@ export function ChatInput({ onSend, disabled, onTyping, onStopTyping }: ChatInpu
             onChange={handleChange}
             placeholder="Nhập tin nhắn..."
             disabled={disabled}
-            className="w-full bg-slate-100/70 border-none h-11 rounded-2xl pl-4 pr-10 focus-visible:ring-1 focus-visible:ring-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-slate-50 border border-slate-200/80 shadow-sm h-12 rounded-2xl pl-5 pr-12 focus-visible:ring-2 focus-visible:ring-blue-500/20 focus-visible:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
           />
           <button
             type="button"
@@ -83,7 +83,7 @@ export function ChatInput({ onSend, disabled, onTyping, onStopTyping }: ChatInpu
           <button
             onClick={() => handleSubmit()}
             disabled={disabled}
-            className="p-2.5 bg-blue-600 text-white rounded-xl shadow-md shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-2xl shadow-lg shadow-blue-200/50 hover:shadow-xl hover:shadow-blue-300/50 hover:scale-105 active:scale-95 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <SendHorizontal className="w-5 h-5" />
           </button>

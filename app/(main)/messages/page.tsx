@@ -1,6 +1,6 @@
 export default function MessagesRootPage() {
   return (
-    <div className="h-full w-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 gap-4 bg-white dark:bg-slate-900 px-6">
+    <div className="h-full w-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 gap-3 bg-white dark:bg-slate-900">
       <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center animate-in fade-in zoom-in duration-300">
          <span className="text-3xl text-slate-300 dark:text-slate-600">✉️</span>
       </div>

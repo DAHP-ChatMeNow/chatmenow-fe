@@ -22,9 +22,9 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   }
 
   return (
-    <div className="flex h-screen w-full bg-slate-50/30 dark:bg-slate-900 overflow-hidden relative">
+    <div className="flex h-screen w-full bg-gradient-to-br from-slate-50 via-white to-slate-50/50 dark:bg-slate-900 overflow-hidden relative">
       
-      <aside className="hidden md:flex w-[70px] lg:w-[80px] shrink-0 border-r border-slate-100 dark:border-slate-800 flex-col items-center py-6 bg-white dark:bg-slate-950 z-50">
+      <aside className="hidden md:flex w-[70px] lg:w-[80px] shrink-0 border-r border-slate-200/60 dark:border-slate-800 flex-col items-center py-4 bg-white/80 backdrop-blur-xl dark:bg-slate-950 z-50 shadow-lg">
         <Sidebar mode="desktop" />
       </aside>
 
@@ -37,7 +37,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         
         <div className="flex-1 overflow-y-auto overflow-x-hidden bg-white dark:bg-slate-900">
           
-          <div className="max-w-[1440px] mx-auto h-full w-full px-4 md:px-6">
+          <div className="h-full w-full">
             {children}
           </div>
         </div>

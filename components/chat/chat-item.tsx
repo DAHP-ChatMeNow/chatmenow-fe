@@ -17,12 +17,12 @@ export function ChatItem({ id, name, avatar, lastMsg, time, unread, isActive }: 
   return (
     <Link href={`/messages/${id}`}>
       <div 
-        className={`flex items-center gap-3 p-3 mx-2 rounded-xl cursor-pointer transition-all ${
-          isActive ? "bg-blue-50/80 shadow-sm" : "hover:bg-slate-50"
+        className={`flex items-center gap-3 p-3.5 mx-3 rounded-2xl cursor-pointer transition-all duration-200 ${
+          isActive ? "bg-gradient-to-r from-blue-50 to-blue-100/50 shadow-md shadow-blue-100/50 scale-[1.02]" : "hover:bg-white hover:shadow-md hover:scale-[1.01]"
         }`}
       >
         <div className="relative">
-          <Avatar className="h-12 w-12 border border-slate-100 shadow-sm">
+          <Avatar className="h-12 w-12 border-2 border-white shadow-lg ring-1 ring-slate-100">
             <AvatarImage src={avatar} alt={name} />
             <AvatarFallback className="bg-slate-200 text-slate-600 font-bold text-xs">
               {name.substring(0,2).toUpperCase()}
