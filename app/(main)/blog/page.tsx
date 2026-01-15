@@ -1,17 +1,20 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Image as ImageIcon, Heart, MessageCircle, Share2, MoreHorizontal, Loader2 } from "lucide-react";
+import { Image as ImageIcon, Heart, MessageCircle, Share2, MoreHorizontal, Loader2, Send } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
-import { useFeed, useCreatePost, useLikePost } from "@/hooks/use-post";
+import { Input } from "@/components/ui/input";
+import { useFeed, useCreatePost, useLikePost, useComments, useAddComment } from "@/hooks/use-post";
 import { BlogSkeleton } from "@/components/skeletons/blog-skeleton";
 import { useAuthStore } from "@/store/use-auth-store";
 
 export default function BlogPage() {
   const [postContent, setPostContent] = useState("");
+  const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
+  const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
   const user = useAuthStore((state) => state.user);
   
   const {
@@ -25,6 +28,7 @@ export default function BlogPage() {
 
   const { mutate: createPost, isPending: isCreatingPost } = useCreatePost();
   const { mutate: likePost } = useLikePost();
+  const { mutate: addComment, isPending: isAddingComment } = useAddComment();
 
   const handleCreatePost = () => {
     if (!postContent.trim()) return;
@@ -43,6 +47,16 @@ export default function BlogPage() {
     if (!isLiked) {
       likePost({ postId });
     }
+  };
+
+  const handleAddComment = (postId: string) => {
+    const content = commentInputs[postId]?.trim();
+    if (!content) return;
+    addComment({ postId, content }, {
+      onSuccess: () => {
+        setCommentInputs({ ...commentInputs, [postId]: "" });
+      }
+    });
   };
 
   // Infinite scroll logic
@@ -127,85 +141,18 @@ export default function BlogPage() {
           ) : allPosts.length > 0 ? (
             <>
               {allPosts.map((post) => (
-                <div key={post.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                  {/* Post Header */}
-                  <div className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-10 w-10 shrink-0">
-                        {post.author?.avatar ? (
-                          <img src={post.author.avatar} alt={post.author.displayName} className="w-full h-full object-cover" />
-                        ) : (
-                          <AvatarFallback className="bg-slate-100 font-bold text-slate-600">
-                            {post.author?.displayName?.charAt(0) || 'U'}
-                          </AvatarFallback>
-                        )}
-                      </Avatar>
-                      <div>
-                        <p className="font-bold text-sm text-slate-900 leading-none">
-                          {post.author?.displayName || `User ${post.authorId.slice(0, 8)}`}
-                        </p>
-                        <p className="text-[11px] text-slate-400 mt-1.5">
-                          {new Date(post.createdAt).toLocaleDateString("vi-VN", {
-                            day: "numeric",
-                            month: "short",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
-                      </div>
-                    </div>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400">
-                      <MoreHorizontal className="w-5 h-5" />
-                    </Button>
-                  </div>
-
-                  {/* Post Content */}
-                  <div className="px-4 pb-3">
-                    <p className="text-sm md:text-base text-slate-800 leading-relaxed whitespace-pre-wrap">
-                      {post.content}
-                    </p>
-                  </div>
-
-                  {/* Post Media */}
-                  {post.media && post.media.length > 0 && (
-                    <div className="bg-slate-100 aspect-video w-full overflow-hidden">
-                      <img
-                        src={post.media[0].url}
-                        className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
-                        alt="Post content"
-                      />
-                    </div>
-                  )}
-
-                  {/* Post Actions */}
-                  <div className="p-1 md:p-2 flex items-center justify-around border-t border-slate-50">
-                    <Button
-                      variant="ghost"
-                      onClick={() => handleLike(post.id, post.isLikedByCurrentUser || false)}
-                      disabled={post.isLikedByCurrentUser}
-                      className={`flex-1 gap-2 text-xs md:text-sm h-10 ${
-                        post.isLikedByCurrentUser
-                          ? "text-red-500 cursor-not-allowed"
-                          : "text-slate-600 hover:text-red-500"
-                      }`}
-                    >
-                      {post.isLikedByCurrentUser ? (
-                        <Heart className="w-4 h-4 md:w-5 md:h-5 fill-current" />
-                      ) : (
-                        <Heart className="w-4 h-4 md:w-5 md:h-5" />
-                      )}
-                      Thích {post.likesCount > 0 && `(${post.likesCount})`}
-                    </Button>
-                    <Button variant="ghost" className="flex-1 gap-2 text-slate-600 hover:text-blue-600 text-xs md:text-sm h-10">
-                      <MessageCircle className="w-4 h-4 md:w-5 md:h-5" />
-                      Bình luận {post.commentsCount > 0 && `(${post.commentsCount})`}
-                    </Button>
-                    <Button variant="ghost" className="flex-1 gap-2 text-slate-600 text-xs md:text-sm h-10">
-                      <Share2 className="w-4 h-4 md:w-5 md:h-5" />
-                      Chia sẻ
-                    </Button>
-                  </div>
-                </div>
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  isExpanded={expandedPostId === post.id}
+                  onToggleExpand={() => setExpandedPostId(expandedPostId === post.id ? null : post.id)}
+                  onLike={() => handleLike(post.id, post.isLikedByCurrentUser || false)}
+                  currentUserId={user?.id || user?._id}
+                  commentInput={commentInputs[post.id] || ""}
+                  onCommentInputChange={(value) => setCommentInputs({ ...commentInputs, [post.id]: value })}
+                  onAddComment={() => handleAddComment(post.id)}
+                  isAddingComment={isAddingComment}
+                />
               ))}
 
               {/* Load More Indicator */}
@@ -228,6 +175,180 @@ export default function BlogPage() {
           )}
         </div>
       </ScrollArea>
+    </div>
+  );
+}
+
+function PostCard({
+  post,
+  isExpanded,
+  onToggleExpand,
+  onLike,
+  currentUserId,
+  commentInput,
+  onCommentInputChange,
+  onAddComment,
+  isAddingComment,
+}: {
+  post: any;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  onLike: () => void;
+  currentUserId?: string;
+  commentInput: string;
+  onCommentInputChange: (value: string) => void;
+  onAddComment: () => void;
+  isAddingComment: boolean;
+}) {
+  const { data: comments = [], isLoading: isLoadingComments } = useComments(isExpanded ? post.id : "");
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+      {/* Post Header */}
+      <div className="p-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Avatar className="h-10 w-10 shrink-0">
+            {post.author?.avatar ? (
+              <img src={post.author.avatar} alt={post.author.displayName} className="w-full h-full object-cover" />
+            ) : (
+              <AvatarFallback className="bg-slate-100 font-bold text-slate-600">
+                {post.author?.displayName?.charAt(0) || 'U'}
+              </AvatarFallback>
+            )}
+          </Avatar>
+          <div>
+            <p className="font-bold text-sm text-slate-900 leading-none">
+              {post.author?.displayName || `User ${post.authorId.slice(0, 8)}`}
+            </p>
+            <p className="text-[11px] text-slate-400 mt-1.5">
+              {new Date(post.createdAt).toLocaleDateString("vi-VN", {
+                day: "numeric",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </p>
+          </div>
+        </div>
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400">
+          <MoreHorizontal className="w-5 h-5" />
+        </Button>
+      </div>
+
+      {/* Post Content */}
+      <div className="px-4 pb-3">
+        <p className="text-sm md:text-base text-slate-800 leading-relaxed whitespace-pre-wrap">
+          {post.content}
+        </p>
+      </div>
+
+      {/* Post Media */}
+      {post.media && post.media.length > 0 && (
+        <div className="bg-slate-100 aspect-video w-full overflow-hidden">
+          <img
+            src={post.media[0].url}
+            className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
+            alt="Post content"
+          />
+        </div>
+      )}
+
+      {/* Post Actions */}
+      <div className="p-1 md:p-2 flex items-center justify-around border-t border-slate-50">
+        <Button
+          variant="ghost"
+          onClick={onLike}
+          disabled={post.isLikedByCurrentUser}
+          className={`flex-1 gap-2 text-xs md:text-sm h-10 ${
+            post.isLikedByCurrentUser
+              ? "text-red-500 cursor-not-allowed"
+              : "text-slate-600 hover:text-red-500"
+          }`}
+        >
+          {post.isLikedByCurrentUser ? (
+            <Heart className="w-4 h-4 md:w-5 md:h-5 fill-current" />
+          ) : (
+            <Heart className="w-4 h-4 md:w-5 md:h-5" />
+          )}
+          Thích {post.likesCount > 0 && `(${post.likesCount})`}
+        </Button>
+        <Button
+          variant="ghost"
+          onClick={onToggleExpand}
+          className="flex-1 gap-2 text-slate-600 hover:text-blue-600 text-xs md:text-sm h-10"
+        >
+          <MessageCircle className="w-4 h-4 md:w-5 md:h-5" />
+          Bình luận {post.commentsCount > 0 && `(${post.commentsCount})`}
+        </Button>
+        <Button variant="ghost" className="flex-1 gap-2 text-slate-600 text-xs md:text-sm h-10">
+          <Share2 className="w-4 h-4 md:w-5 md:h-5" />
+          Chia sẻ
+        </Button>
+      </div>
+
+      {/* Comments Section */}
+      {isExpanded && (
+        <div className="border-t border-slate-50 p-4 space-y-4">
+          {/* Comment Input */}
+          <div className="flex gap-3">
+            <Avatar className="h-8 w-8 shrink-0">
+              <AvatarImage src={currentUserId} />
+              <AvatarFallback>U</AvatarFallback>
+            </Avatar>
+            <div className="flex-1 flex gap-2">
+              <Input
+                placeholder="Viết bình luận..."
+                value={commentInput}
+                onChange={(e) => onCommentInputChange(e.target.value)}
+                disabled={isAddingComment}
+                className="text-sm h-9"
+              />
+              <Button
+                size="sm"
+                onClick={onAddComment}
+                disabled={!commentInput.trim() || isAddingComment}
+                className="px-3"
+              >
+                {isAddingComment ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              </Button>
+            </div>
+          </div>
+
+          {/* Comments List */}
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {isLoadingComments ? (
+              <div className="text-sm text-slate-500 text-center py-2">Đang tải bình luận...</div>
+            ) : comments.length === 0 ? (
+              <div className="text-sm text-slate-500 text-center py-2">Chưa có bình luận nào</div>
+            ) : (
+              comments.map((comment) => (
+                <div key={comment.id} className="flex gap-3">
+                  <Avatar className="h-8 w-8 shrink-0">
+                    <AvatarImage src={comment.user?.avatar} />
+                    <AvatarFallback>{comment.user?.displayName?.[0] || 'U'}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 bg-slate-50 rounded-lg p-2.5">
+                    <p className="text-xs font-semibold text-slate-900">
+                      {comment.user?.displayName || 'Unknown'}
+                    </p>
+                    <p className="text-sm text-slate-800 mt-1 leading-relaxed">
+                      {comment.content}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      {new Date(comment.createdAt).toLocaleDateString("vi-VN", {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

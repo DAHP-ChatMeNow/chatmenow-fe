@@ -54,10 +54,11 @@ export const chatService = {
     return res.data;
   },
 
-  // Tạo conversation mới
-  createConversation: async (memberIds: string[]) => {
-    const res = await api.post<ConversationDetailsResponse>("/chat/conversations", { memberIds });
-    return mapMongoId(res.data.conversation);
+  // Tạo group conversation
+  createConversation: async (data: { name: string; memberIds: string[]; groupAvatar?: string }) => {
+    const res = await api.post("/chat/conversations", data);
+    const group = (res.data as any).group || (res.data as any).conversation || res.data;
+    return mapMongoId(group);
   },
 
   // Lấy chi tiết conversation
@@ -96,5 +97,23 @@ export const chatService = {
   getPrivateConversationPartner: async (conversationId: string) => {
     const res = await api.get<PartnerResponse>(`/chat/conversations/${conversationId}/partner`);
     return mapMongoId(res.data.partner);
+  },
+
+  // Thêm thành viên vào nhóm
+  addMemberToGroup: async (conversationId: string, memberIds: string[]) => {
+    const res = await api.post(`/chat/conversations/${conversationId}/members`, { memberIds });
+    return mapMongoId((res.data as any).conversation);
+  },
+
+  // Xóa thành viên khỏi nhóm
+  removeMemberFromGroup: async (conversationId: string, memberId: string) => {
+    const res = await api.delete(`/chat/conversations/${conversationId}/members/${memberId}`);
+    return mapMongoId((res.data as any).conversation);
+  },
+
+  // Giải tán nhóm
+  dissolveGroup: async (conversationId: string) => {
+    const res = await api.delete(`/chat/conversations/${conversationId}`);
+    return res.data;
   },
 };

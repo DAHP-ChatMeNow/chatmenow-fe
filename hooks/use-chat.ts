@@ -140,3 +140,52 @@ export const useConversationDisplay = (
         : false,
   };
 };
+
+export const useAddMemberToGroup = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ conversationId, memberIds }: { conversationId: string; memberIds: string[] }) =>
+      chatService.addMemberToGroup(conversationId, memberIds),
+    onSuccess: (_, { conversationId }) => {
+      queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      toast.success("Đã thêm thành viên vào nhóm");
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || "Không thể thêm thành viên");
+    },
+  });
+};
+
+export const useRemoveMemberFromGroup = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ conversationId, memberId }: { conversationId: string; memberId: string }) =>
+      chatService.removeMemberFromGroup(conversationId, memberId),
+    onSuccess: (_, { conversationId }) => {
+      queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      toast.success("Đã xóa thành viên");
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || "Không thể xóa thành viên");
+    },
+  });
+};
+
+export const useDissolveGroup = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (conversationId: string) => chatService.dissolveGroup(conversationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      toast.success("Đã giải tán nhóm");
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || "Không thể giải tán nhóm");
+    },
+  });
+};

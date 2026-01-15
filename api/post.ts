@@ -1,5 +1,6 @@
 import api from "@/lib/axios";
 import { Post } from "@/types/post";
+import { Comment } from "@/types/comment";
 import { User } from "@/types/user";
 
 export type CreatePostPayload = {
@@ -7,7 +8,6 @@ export type CreatePostPayload = {
   media?: Array<{ url: string; type: string; duration?: number }>;
   privacy?: "public" | "friends" | "private";
 };
-
 
 interface BackendPost {
   id: string;
@@ -23,6 +23,26 @@ interface BackendPost {
   createdAt: Date;
   updatedAt?: Date;
 }
+
+interface BackendComment {
+  _id: string;
+  postId: string;
+  userId: User | string;
+  content: string;
+  createdAt: Date;
+  updatedAt?: Date;
+}
+
+const mapComment = (c: BackendComment): Comment => ({
+  id: c._id,
+  _id: c._id,
+  postId: c.postId,
+  userId: typeof c.userId === "string" ? c.userId : (c.userId?._id || ""),
+  user: typeof c.userId === "string" ? undefined : (c.userId as User),
+  content: c.content,
+  createdAt: c.createdAt,
+  updatedAt: c.updatedAt,
+});
 
 const getFeed = async ({ pageParam = 1 }: { pageParam?: number }) => {
   const { data } = await api.get<{ success: boolean; posts: BackendPost[]; total: number; page: number; limit: number }>("/posts/feed", { 
@@ -89,4 +109,14 @@ const unlikePost = async (postId: string) => {
   return data;
 };
 
-export const postService = { getFeed, createPost, likePost, unlikePost };
+const getComments = async (postId: string) => {
+  const { data } = await api.get<{ success: boolean; comments: BackendComment[] }>(`/posts/${postId}/comments`);
+  return data.comments.map(mapComment);
+};
+
+const addComment = async (postId: string, content: string) => {
+  const { data } = await api.post<BackendComment>(`/posts/${postId}/comments`, { content });
+  return mapComment(data);
+};
+
+export const postService = { getFeed, createPost, likePost, unlikePost, getComments, addComment };
