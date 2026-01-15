@@ -1,4 +1,4 @@
-import { Inter } from 'next/font/google';
+import { Montserrat, Roboto } from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/sonner";
 import { QueryProvider } from "@/components/providers/query-provider";
@@ -6,15 +6,23 @@ import { SocketProvider } from "@/components/providers/socket-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { LanguageProvider } from "@/contexts/language-context";
 
-const inter = Inter({ 
+const montserrat = Montserrat({ 
   subsets: ['latin', 'vietnamese'], 
-  variable: '--font-inter',
+  variable: '--font-montserrat',
+  display: 'swap',
+});
+
+const roboto = Roboto({ 
+  subsets: ['latin', 'vietnamese'], 
+  weight: ['300', '400', '500', '700'],
+  variable: '--font-roboto',
+  display: 'swap',
 });
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="vi" suppressHydrationWarning>
-      <body className={`${inter.variable} font-sans antialiased`}>
+      <body className={`${montserrat.variable} ${roboto.variable} font-sans antialiased`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

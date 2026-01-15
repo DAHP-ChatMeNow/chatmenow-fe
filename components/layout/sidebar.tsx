@@ -27,10 +27,10 @@ export function Sidebar({ mode = "desktop" }: { mode?: "desktop" | "mobile" }) {
     <div className={containerClasses}>
       {navItems.map((item) => (
         <Link key={item.path} href={item.path}>
-          <div className={`p-2 rounded-xl transition-all relative ${
+          <div className={`p-3 rounded-2xl transition-all duration-200 relative ${
             isActive(item.path) 
-              ? "text-blue-600 dark:text-blue-400 bg-blue-50/80 dark:bg-blue-900/30 scale-110 shadow-sm" 
-              : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
+              ? "text-blue-600 dark:text-blue-400 bg-gradient-to-br from-blue-50 to-blue-100/50 dark:bg-blue-900/30 scale-110 shadow-lg shadow-blue-100/50" 
+              : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100/80 hover:scale-105"
           }`}>
             <item.icon className={mode === "desktop" ? "w-6 h-6" : "w-7 h-7"} />
             

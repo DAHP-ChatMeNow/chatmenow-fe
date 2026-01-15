@@ -29,18 +29,18 @@ export function ChatSidebar() {
   });
   
   return (
-    <aside className="w-[350px] border-r border-slate-100 flex flex-col h-full bg-white shrink-0">
-      <div className="p-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-slate-900 tracking-tight">Messages</h1>
-        <button className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+    <aside className="w-[350px] border-r border-slate-200/60 flex flex-col h-full bg-gradient-to-b from-white to-slate-50/30 shrink-0">
+      <div className="px-5 pt-4 pb-3 flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-slate-900 tracking-tight bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text">Messages</h1>
+        <button className="p-2.5 hover:bg-slate-100 rounded-xl transition-all duration-200 hover:scale-105">
           <Edit className="w-5 h-5 text-slate-600" />
         </button>
       </div>
 
-      <div className="px-4 pb-4">
+      <div className="px-5 pb-4">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input placeholder="Search messages..." className="pl-9 bg-slate-100/50 border-none h-10" />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Input placeholder="Search messages..." className="pl-11 bg-white border border-slate-200/80 shadow-sm h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-blue-500/20" />
         </div>
       </div>
 
@@ -54,7 +54,7 @@ export function ChatSidebar() {
             Không thể tải danh sách hội thoại
           </div>
         ) : conversations && conversations.length > 0 ? (
-          <div className="flex flex-col gap-1 pb-4">
+          <div className="flex flex-col gap-0.5 pb-2">
             {conversations.map((chat) => (
               <ConversationItemDisplay
                 key={chat.id}

@@ -28,7 +28,7 @@ export default function ContactsPage() {
   return (
     <div className="flex flex-col h-full bg-white w-full">
       <header className="h-[60px] md:h-[70px] border-b border-slate-100 flex items-center justify-between px-4 md:px-6 sticky top-0 bg-white z-10 shrink-0">
-        <h1 className="text-lg md:text-xl font-bold">Danh bạ</h1>
+        <h1 className="text-lg md:text-xl font-bold text-black">Danh bạ</h1>
         <Button
           size="sm"
           onClick={() => setShowSearchDialog(true)}
@@ -51,7 +51,7 @@ export default function ContactsPage() {
                 <UserPlus className="w-5 h-5" />
               </div>
               <div>
-                <p className="font-semibold text-sm">Lời mời kết bạn</p>
+                <p className="font-semibold text-sm text-black">Lời mời kết bạn</p>
                 <p className="text-xs text-slate-400">{friendRequests.length}</p>
               </div>
             </div>
@@ -61,7 +61,7 @@ export default function ContactsPage() {
                 <Users2 className="w-5 h-5" />
               </div>
               <div>
-                <p className="font-semibold text-sm">Danh sách bạn bè</p>
+                <p className="font-semibold text-sm text-black">Danh sách bạn bè</p>
                 <p className="text-xs text-slate-400">{contacts.length} bạn</p>
               </div>
             </div>
@@ -71,7 +71,7 @@ export default function ContactsPage() {
                 <Bookmark className="w-5 h-5" />
               </div>
               <div>
-                <p className="font-semibold text-sm">Yêu thích</p>
+                <p className="font-semibold text-sm text-black">Yêu thích</p>
                 <p className="text-xs text-slate-400">0 bạn</p>
               </div>
             </div>
@@ -92,7 +92,7 @@ export default function ContactsPage() {
 
           {/* Friends List */}
           <div className="space-y-4">
-            <h3 className="font-bold text-slate-900">
+            <h3 className="font-bold text-black">
               Bạn bè ({contacts.filter(c => c.displayName.toLowerCase().includes(searchQuery.toLowerCase())).length})
             </h3>
             <FriendsList 

@@ -11,7 +11,8 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['var(--font-inter)']
+        sans: ['var(--font-roboto)', 'sans-serif'],
+        heading: ['var(--font-montserrat)', 'sans-serif']
       },
       colors: {
         border: 'hsl(var(--border))',
