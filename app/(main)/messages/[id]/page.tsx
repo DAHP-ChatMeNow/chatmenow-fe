@@ -5,7 +5,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChatHeader } from "@/components/chat/chat-header";
 import { ChatInput } from "@/components/chat/chat-input";
 import { useParams } from "next/navigation";
-import { useConversation, useMessages, useSendMessage, useConversationDisplay } from "@/hooks/use-chat";
+import {
+  useConversation,
+  useMessages,
+  useSendMessage,
+  useConversationDisplay,
+} from "@/hooks/use-chat";
 import { MessageSkeleton } from "@/components/skeletons/message-skeleton";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useSocket } from "@/components/providers/socket-provider";
@@ -16,17 +21,21 @@ export default function ChatDetailPage() {
   const { id } = useParams();
   const conversationId = id as string;
   const user = useAuthStore((state) => state.user);
-  
+
   // Fallback cho userId
   const currentUserId = user?.id || user?._id;
-  
+
   // Lấy conversation và messages riêng biệt
   const { data: conversation } = useConversation(conversationId);
   const { data: messagesData, isLoading, error } = useMessages(conversationId);
   const messages = messagesData?.messages || [];
-  
+
   // Hook tập trung logic phân biệt private/group - tự động fetch partner nếu cần
-  const { displayName: conversationName, avatar: conversationAvatar, isOnline: isOnlineStatus } = useConversationDisplay(conversation, currentUserId);
+  const {
+    displayName: conversationName,
+    avatar: conversationAvatar,
+    isOnline: isOnlineStatus,
+  } = useConversationDisplay(conversation, currentUserId);
 
   const { mutate: sendMessage, isPending } = useSendMessage();
   const { socket, isConnected } = useSocket();
@@ -36,8 +45,11 @@ export default function ChatDetailPage() {
 
   useEffect(() => {
     if (scrollRef.current && messages) {
-      const viewport = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]');
-      if (viewport) viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
+      const viewport = scrollRef.current.querySelector(
+        "[data-radix-scroll-area-viewport]",
+      );
+      if (viewport)
+        viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
     }
   }, [messages]);
 
@@ -47,17 +59,16 @@ export default function ChatDetailPage() {
     socket.emit("joinConversation", conversationId);
 
     const handleNewMessage = (newMessage: Message) => {
-      queryClient.setQueryData(
-        ["messages", conversationId],
-        (oldData: any) => {
-          if (!oldData) return { messages: [newMessage] };
-          const exists = oldData.messages.some((msg: Message) => msg.id === newMessage.id);
-          if (exists) return oldData;
-          return {
-            messages: [...oldData.messages, newMessage],
-          };
-        }
-      );
+      queryClient.setQueryData(["messages", conversationId], (oldData: any) => {
+        if (!oldData) return { messages: [newMessage] };
+        const exists = oldData.messages.some(
+          (msg: Message) => msg.id === newMessage.id,
+        );
+        if (exists) return oldData;
+        return {
+          messages: [...oldData.messages, newMessage],
+        };
+      });
 
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
     };
@@ -73,7 +84,13 @@ export default function ChatDetailPage() {
   useEffect(() => {
     if (!socket || !conversationId) return;
 
-    const handleUserTyping = ({ userId, displayName }: { userId: string; displayName: string }) => {
+    const handleUserTyping = ({
+      userId,
+      displayName,
+    }: {
+      userId: string;
+      displayName: string;
+    }) => {
       if (userId !== user?.id) {
         setTypingUsers((prev) => {
           if (!prev.includes(displayName)) return [...prev, displayName];
@@ -97,7 +114,7 @@ export default function ChatDetailPage() {
 
   const handleSendMessage = (text: string) => {
     if (!text.trim() || isPending) return;
-    
+
     sendMessage({
       conversationId,
       content: text,
@@ -107,7 +124,11 @@ export default function ChatDetailPage() {
 
   const handleTyping = () => {
     if (socket && conversationId) {
-      socket.emit("typing", { conversationId, userId: user?.id, displayName: user?.displayName });
+      socket.emit("typing", {
+        conversationId,
+        userId: user?.id,
+        displayName: user?.displayName,
+      });
     }
   };
 
@@ -119,7 +140,11 @@ export default function ChatDetailPage() {
 
   return (
     <div className="flex flex-col h-full bg-white relative w-full overflow-hidden">
-      <ChatHeader name={conversationName} isOnline={isOnlineStatus} avatar={conversationAvatar} />
+      <ChatHeader
+        name={conversationName}
+        isOnline={isOnlineStatus}
+        avatar={conversationAvatar}
+      />
 
       <ScrollArea className="flex-1 p-3 md:p-6 bg-slate-50/30" ref={scrollRef}>
         <div className="flex flex-col gap-4 w-full max-w-5xl mx-auto pb-4">
@@ -133,23 +158,27 @@ export default function ChatDetailPage() {
             <>
               {messages.map((msg: Message) => {
                 // So sánh senderId với currentUserId (handle cả _id và id)
-                const messageSenderId = typeof msg.senderId === 'string' 
-                  ? msg.senderId 
-                  : (msg.senderId as any)?._id || (msg.senderId as any)?.id;
+                const messageSenderId =
+                  typeof msg.senderId === "string"
+                    ? msg.senderId
+                    : (msg.senderId as any)?._id || (msg.senderId as any)?.id;
                 const isMe = messageSenderId === currentUserId;
-                
+
                 // Debug log
                 if (messages.indexOf(msg) === 0) {
                   console.log("Message comparison:", {
                     messageSenderId,
                     currentUserId,
                     isMe,
-                    rawSenderId: msg.senderId
+                    rawSenderId: msg.senderId,
                   });
                 }
-                
+
                 return (
-                  <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+                  <div
+                    key={msg.id}
+                    className={`flex ${isMe ? "justify-end" : "justify-start"}`}
+                  >
                     <div
                       className={`px-4 py-2.5 rounded-2xl text-[14px] md:text-[15px] shadow-sm max-w-[85%] md:max-w-[70%] lg:max-w-[60%] ${
                         isMe
@@ -162,6 +191,7 @@ export default function ChatDetailPage() {
                         className={`text-[10px] mt-1 text-right ${
                           isMe ? "text-blue-100" : "text-slate-400"
                         }`}
+                        suppressHydrationWarning
                       >
                         {new Date(msg.createdAt).toLocaleTimeString("vi-VN", {
                           hour: "2-digit",
@@ -172,7 +202,7 @@ export default function ChatDetailPage() {
                   </div>
                 );
               })}
-              
+
               {typingUsers.length > 0 && (
                 <div className="flex justify-start">
                   <div className="px-4 py-2.5 rounded-2xl text-[14px] bg-slate-200 text-slate-600">
@@ -188,9 +218,9 @@ export default function ChatDetailPage() {
           )}
         </div>
       </ScrollArea>
-      
-      <ChatInput 
-        onSend={handleSendMessage} 
+
+      <ChatInput
+        onSend={handleSendMessage}
         disabled={isPending}
         onTyping={handleTyping}
         onStopTyping={handleStopTyping}
