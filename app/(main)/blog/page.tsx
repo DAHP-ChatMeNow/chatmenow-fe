@@ -1,22 +1,39 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Image as ImageIcon, Heart, MessageCircle, Share2, MoreHorizontal, Loader2, Send } from "lucide-react";
+import {
+  Image as ImageIcon,
+  Heart,
+  MessageCircle,
+  Share2,
+  MoreHorizontal,
+  Loader2,
+  Send,
+} from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { useFeed, useCreatePost, useLikePost, useComments, useAddComment } from "@/hooks/use-post";
+import {
+  useFeed,
+  useCreatePost,
+  useLikePost,
+  useComments,
+  useAddComment,
+} from "@/hooks/use-post";
 import { BlogSkeleton } from "@/components/skeletons/blog-skeleton";
 import { useAuthStore } from "@/store/use-auth-store";
+import { Post } from "@/types/post";
 
 export default function BlogPage() {
   const [postContent, setPostContent] = useState("");
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
-  const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
+  const [commentInputs, setCommentInputs] = useState<Record<string, string>>(
+    {},
+  );
   const user = useAuthStore((state) => state.user);
-  
+
   const {
     data,
     isLoading,
@@ -32,14 +49,14 @@ export default function BlogPage() {
 
   const handleCreatePost = () => {
     if (!postContent.trim()) return;
-    
+
     createPost(
       { content: postContent, privacy: "public" },
       {
         onSuccess: () => {
           setPostContent("");
         },
-      }
+      },
     );
   };
 
@@ -52,11 +69,14 @@ export default function BlogPage() {
   const handleAddComment = (postId: string) => {
     const content = commentInputs[postId]?.trim();
     if (!content) return;
-    addComment({ postId, content }, {
-      onSuccess: () => {
-        setCommentInputs({ ...commentInputs, [postId]: "" });
-      }
-    });
+    addComment(
+      { postId, content },
+      {
+        onSuccess: () => {
+          setCommentInputs({ ...commentInputs, [postId]: "" });
+        },
+      },
+    );
   };
 
   // Infinite scroll logic
@@ -77,23 +97,25 @@ export default function BlogPage() {
       }
     };
 
-    const scrollArea = document.querySelector('[data-radix-scroll-area-viewport]');
+    const scrollArea = document.querySelector(
+      "[data-radix-scroll-area-viewport]",
+    );
     if (scrollArea) {
-      scrollArea.addEventListener('scroll', handleScroll);
-      return () => scrollArea.removeEventListener('scroll', handleScroll);
+      scrollArea.addEventListener("scroll", handleScroll);
+      return () => scrollArea.removeEventListener("scroll", handleScroll);
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const allPosts = data?.pages.flatMap((page) => page.posts) || [];
 
   return (
-    <div className="flex flex-col h-full bg-slate-50/50 w-full">
+    <div className="flex flex-col w-full h-full bg-slate-50/50">
       <ScrollArea className="flex-1 w-full">
-        <div className="w-full py-4 md:py-8 px-4 md:px-6 space-y-6">
+        <div className="w-full px-4 py-4 space-y-6 md:py-8 md:px-6">
           {/* Create Post */}
-          <div className="bg-white p-4 md:p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+          <div className="p-4 space-y-4 bg-white border shadow-sm md:p-6 rounded-2xl border-slate-100">
             <div className="flex gap-3 md:gap-4">
-              <Avatar className="h-10 w-10 md:h-12 md:w-12 shrink-0">
+              <Avatar className="w-10 h-10 md:h-12 md:w-12 shrink-0">
                 <AvatarImage src={user?.avatar} />
                 <AvatarFallback>{user?.displayName?.[0] || "U"}</AvatarFallback>
               </Avatar>
@@ -105,15 +127,19 @@ export default function BlogPage() {
                 className="flex-1 border-none bg-slate-50 rounded-xl resize-none focus-visible:ring-0 min-h-[80px] md:min-h-[100px] text-sm md:text-base p-3"
               />
             </div>
-            <div className="flex justify-between items-center pt-2 border-t border-slate-50">
-              <Button variant="ghost" size="sm" className="text-slate-500 gap-2 h-9 md:h-10 px-2 md:px-4">
-                <ImageIcon className="w-4 h-4 md:w-5 md:h-5 text-green-500" />
+            <div className="flex items-center justify-between pt-2 border-t border-slate-50">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-2 px-2 text-slate-500 h-9 md:h-10 md:px-4"
+              >
+                <ImageIcon className="w-4 h-4 text-green-500 md:w-5 md:h-5" />
                 <span className="text-xs md:text-sm">Ảnh/Video</span>
               </Button>
               <Button
                 onClick={handleCreatePost}
                 disabled={!postContent.trim() || isCreatingPost}
-                className="bg-blue-600 hover:bg-blue-700 px-4 md:px-8 rounded-full h-9 md:h-10 text-xs md:text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 text-xs font-semibold text-white bg-blue-600 rounded-full hover:bg-blue-700 md:px-8 h-9 md:h-10 md:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isCreatingPost ? (
                   <>
@@ -135,7 +161,7 @@ export default function BlogPage() {
               <BlogSkeleton key="skeleton-3" />
             </>
           ) : error ? (
-            <div className="text-center py-12 text-slate-500">
+            <div className="py-12 text-center text-slate-500">
               Không thể tải bài viết
             </div>
           ) : allPosts.length > 0 ? (
@@ -145,11 +171,19 @@ export default function BlogPage() {
                   key={post.id}
                   post={post}
                   isExpanded={expandedPostId === post.id}
-                  onToggleExpand={() => setExpandedPostId(expandedPostId === post.id ? null : post.id)}
-                  onLike={() => handleLike(post.id, post.isLikedByCurrentUser || false)}
+                  onToggleExpand={() =>
+                    setExpandedPostId(
+                      expandedPostId === post.id ? null : post.id,
+                    )
+                  }
+                  onLike={() =>
+                    handleLike(post.id, post.isLikedByCurrentUser || false)
+                  }
                   currentUserId={user?.id || user?._id}
                   commentInput={commentInputs[post.id] || ""}
-                  onCommentInputChange={(value) => setCommentInputs({ ...commentInputs, [post.id]: value })}
+                  onCommentInputChange={(value) =>
+                    setCommentInputs({ ...commentInputs, [post.id]: value })
+                  }
                   onAddComment={() => handleAddComment(post.id)}
                   isAddingComment={isAddingComment}
                 />
@@ -158,18 +192,18 @@ export default function BlogPage() {
               {/* Load More Indicator */}
               {isFetchingNextPage && (
                 <div className="flex justify-center py-4">
-                  <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                  <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
                 </div>
               )}
 
               {!hasNextPage && allPosts.length > 0 && (
-                <div className="text-center py-4 text-slate-400 text-sm">
+                <div className="py-4 text-sm text-center text-slate-400">
                   Bạn đã xem hết bài viết
                 </div>
               )}
             </>
           ) : (
-            <div className="text-center py-12 text-slate-500">
+            <div className="py-12 text-center text-slate-500">
               Chưa có bài viết nào. Hãy đăng bài đầu tiên!
             </div>
           )}
@@ -190,7 +224,7 @@ function PostCard({
   onAddComment,
   isAddingComment,
 }: {
-  post: any;
+  post: Post;
   isExpanded: boolean;
   onToggleExpand: () => void;
   onLike: () => void;
@@ -200,27 +234,36 @@ function PostCard({
   onAddComment: () => void;
   isAddingComment: boolean;
 }) {
-  const { data: comments = [], isLoading: isLoadingComments } = useComments(isExpanded ? post.id : "");
+  const { data: comments = [], isLoading: isLoadingComments } = useComments(
+    isExpanded ? post.id : "",
+  );
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+    <div className="overflow-hidden bg-white border shadow-sm rounded-2xl border-slate-100">
       {/* Post Header */}
-      <div className="p-4 flex items-center justify-between">
+      <div className="flex items-center justify-between p-4">
         <div className="flex items-center gap-3">
-          <Avatar className="h-10 w-10 shrink-0">
+          <Avatar className="w-10 h-10 shrink-0">
             {post.author?.avatar ? (
-              <img src={post.author.avatar} alt={post.author.displayName} className="w-full h-full object-cover" />
+              <img
+                src={post.author.avatar}
+                alt={post.author.displayName}
+                className="object-cover w-full h-full"
+              />
             ) : (
-              <AvatarFallback className="bg-slate-100 font-bold text-slate-600">
-                {post.author?.displayName?.charAt(0) || 'U'}
+              <AvatarFallback className="font-bold bg-slate-100 text-slate-600">
+                {post.author?.displayName?.charAt(0) || "U"}
               </AvatarFallback>
             )}
           </Avatar>
           <div>
-            <p className="font-bold text-sm text-slate-900 leading-none">
+            <p className="text-sm font-bold leading-none text-slate-900">
               {post.author?.displayName || `User ${post.authorId.slice(0, 8)}`}
             </p>
-            <p className="text-[11px] text-slate-400 mt-1.5">
+            <p
+              className="text-[11px] text-slate-400 mt-1.5"
+              suppressHydrationWarning
+            >
               {new Date(post.createdAt).toLocaleDateString("vi-VN", {
                 day: "numeric",
                 month: "short",
@@ -230,31 +273,31 @@ function PostCard({
             </p>
           </div>
         </div>
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400">
+        <Button variant="ghost" size="icon" className="w-8 h-8 text-slate-400">
           <MoreHorizontal className="w-5 h-5" />
         </Button>
       </div>
 
       {/* Post Content */}
       <div className="px-4 pb-3">
-        <p className="text-sm md:text-base text-slate-800 leading-relaxed whitespace-pre-wrap">
+        <p className="text-sm leading-relaxed whitespace-pre-wrap md:text-base text-slate-800">
           {post.content}
         </p>
       </div>
 
       {/* Post Media */}
       {post.media && post.media.length > 0 && (
-        <div className="bg-slate-100 aspect-video w-full overflow-hidden">
+        <div className="w-full overflow-hidden bg-slate-100 aspect-video">
           <img
             src={post.media[0].url}
-            className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
+            className="object-cover w-full h-full transition-transform duration-500 hover:scale-105"
             alt="Post content"
           />
         </div>
       )}
 
       {/* Post Actions */}
-      <div className="p-1 md:p-2 flex items-center justify-around border-t border-slate-50">
+      <div className="flex items-center justify-around p-1 border-t md:p-2 border-slate-50">
         <Button
           variant="ghost"
           onClick={onLike}
@@ -266,7 +309,7 @@ function PostCard({
           }`}
         >
           {post.isLikedByCurrentUser ? (
-            <Heart className="w-4 h-4 md:w-5 md:h-5 fill-current" />
+            <Heart className="w-4 h-4 fill-current md:w-5 md:h-5" />
           ) : (
             <Heart className="w-4 h-4 md:w-5 md:h-5" />
           )}
@@ -275,12 +318,15 @@ function PostCard({
         <Button
           variant="ghost"
           onClick={onToggleExpand}
-          className="flex-1 gap-2 text-slate-600 hover:text-blue-600 text-xs md:text-sm h-10"
+          className="flex-1 h-10 gap-2 text-xs text-slate-600 hover:text-blue-600 md:text-sm"
         >
           <MessageCircle className="w-4 h-4 md:w-5 md:h-5" />
           Bình luận {post.commentsCount > 0 && `(${post.commentsCount})`}
         </Button>
-        <Button variant="ghost" className="flex-1 gap-2 text-slate-600 text-xs md:text-sm h-10">
+        <Button
+          variant="ghost"
+          className="flex-1 h-10 gap-2 text-xs text-slate-600 md:text-sm"
+        >
           <Share2 className="w-4 h-4 md:w-5 md:h-5" />
           Chia sẻ
         </Button>
@@ -288,14 +334,14 @@ function PostCard({
 
       {/* Comments Section */}
       {isExpanded && (
-        <div className="border-t border-slate-50 p-4 space-y-4">
+        <div className="p-4 space-y-4 border-t border-slate-50">
           {/* Comment Input */}
           <div className="flex gap-3">
-            <Avatar className="h-8 w-8 shrink-0">
+            <Avatar className="w-8 h-8 shrink-0">
               <AvatarImage src={currentUserId} />
               <AvatarFallback>U</AvatarFallback>
             </Avatar>
-            <div className="flex-1 flex gap-2">
+            <div className="flex flex-1 gap-2">
               <Input
                 placeholder="Viết bình luận..."
                 value={commentInput}
@@ -309,32 +355,45 @@ function PostCard({
                 disabled={!commentInput.trim() || isAddingComment}
                 className="px-3"
               >
-                {isAddingComment ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {isAddingComment ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
               </Button>
             </div>
           </div>
 
           {/* Comments List */}
-          <div className="space-y-3 max-h-96 overflow-y-auto">
+          <div className="space-y-3 overflow-y-auto max-h-96">
             {isLoadingComments ? (
-              <div className="text-sm text-slate-500 text-center py-2">Đang tải bình luận...</div>
+              <div className="py-2 text-sm text-center text-slate-500">
+                Đang tải bình luận...
+              </div>
             ) : comments.length === 0 ? (
-              <div className="text-sm text-slate-500 text-center py-2">Chưa có bình luận nào</div>
+              <div className="py-2 text-sm text-center text-slate-500">
+                Chưa có bình luận nào
+              </div>
             ) : (
               comments.map((comment) => (
                 <div key={comment.id} className="flex gap-3">
-                  <Avatar className="h-8 w-8 shrink-0">
+                  <Avatar className="w-8 h-8 shrink-0">
                     <AvatarImage src={comment.user?.avatar} />
-                    <AvatarFallback>{comment.user?.displayName?.[0] || 'U'}</AvatarFallback>
+                    <AvatarFallback>
+                      {comment.user?.displayName?.[0] || "U"}
+                    </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 bg-slate-50 rounded-lg p-2.5">
                     <p className="text-xs font-semibold text-slate-900">
-                      {comment.user?.displayName || 'Unknown'}
+                      {comment.user?.displayName || "Unknown"}
                     </p>
-                    <p className="text-sm text-slate-800 mt-1 leading-relaxed">
+                    <p className="mt-1 text-sm leading-relaxed text-slate-800">
                       {comment.content}
                     </p>
-                    <p className="text-[11px] text-slate-400 mt-1">
+                    <p
+                      className="text-[11px] text-slate-400 mt-1"
+                      suppressHydrationWarning
+                    >
                       {new Date(comment.createdAt).toLocaleDateString("vi-VN", {
                         day: "numeric",
                         month: "short",
