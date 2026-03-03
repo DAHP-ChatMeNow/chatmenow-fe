@@ -17,14 +17,7 @@ export const useConversations = () => {
 export const useConversation = (conversationId: string) => {
   return useQuery({
     queryKey: ["conversation", conversationId],
-    queryFn: async () => {
-      try {
-        return await chatService.getConversationDetails(conversationId);
-      } catch (error) {
-        console.error("Error fetching conversation:", error);
-        throw error;
-      }
-    },
+    queryFn: () => chatService.getConversationDetails(conversationId),
     enabled: !!conversationId,
     retry: 1,
   });
@@ -97,14 +90,6 @@ export const usePrivatePartner = (
     ? (typeof partnerId === 'string' ? partnerId : (partnerId as any)._id || (partnerId as any).id)
     : null;
 
-  console.log("usePrivatePartner:", {
-    conversationType: conversation?.type,
-    currentUserId,
-    members: conversation?.members,
-    partnerId,
-    partnerIdString
-  });
-
   return useQuery({
     queryKey: ["partner", partnerIdString],
     queryFn: () => userService.getUserProfile(partnerIdString!),
@@ -122,7 +107,6 @@ export const useConversationDisplay = (
   conversation: Conversation | undefined,
   currentUserId: string | undefined
 ) => {
-  console.log("useConversationDisplay called with conversation:", conversation, "currentUserId:", currentUserId);
   const { data: partner } = usePrivatePartner(conversation, currentUserId);
 
   return {

@@ -22,7 +22,6 @@ export default function ContactsPage() {
   const [showSearchDialog, setShowSearchDialog] = useState(false);
 
   const contacts = contactsData?.contacts || [];
-  console.log("ContactsPage loaded contacts:", contacts);
   const friendRequests = friendRequestsData?.requests || [];
 
   return (

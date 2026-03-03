@@ -1,7 +1,8 @@
-"use client"
+"use client";
 
 import { MessageCircle, Loader } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 import { Button } from "@/components/ui/button";
 import { User } from "@/types/user";
 import { useRouter } from "next/navigation";
@@ -14,13 +15,17 @@ interface FriendsListProps {
   searchQuery?: string;
 }
 
-export function FriendsList({ friends, isLoading, searchQuery = "" }: FriendsListProps) {
+export function FriendsList({
+  friends,
+  isLoading,
+  searchQuery = "",
+}: FriendsListProps) {
   const router = useRouter();
   const { mutate: removeFriend } = useRemoveFriend();
   const { mutate: getPrivateConversation } = useGetPrivateConversation();
 
-  const filteredFriends = friends.filter(friend =>
-    friend.displayName.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredFriends = friends.filter((friend) =>
+    friend.displayName.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   const handleMessageFriend = (friendId: string) => {
@@ -56,19 +61,12 @@ export function FriendsList({ friends, isLoading, searchQuery = "" }: FriendsLis
           className="p-3 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all group"
         >
           <div className="flex items-start justify-between mb-2">
-            <Avatar className="h-10 w-10">
-              {friend.avatar ? (
-                <img
-                  src={friend.avatar}
-                  alt={friend.displayName}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <AvatarFallback className="bg-slate-100 font-bold">
-                  {friend.displayName.charAt(0).toUpperCase()}
-                </AvatarFallback>
-              )}
-            </Avatar>
+            <PresignedAvatar
+              avatarKey={friend.avatar}
+              displayName={friend.displayName}
+              className="h-10 w-10"
+              fallbackClassName="bg-slate-100"
+            />
             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <Button
                 size="sm"
@@ -88,7 +86,9 @@ export function FriendsList({ friends, isLoading, searchQuery = "" }: FriendsLis
               </Button>
             </div>
           </div>
-          <p className="font-semibold text-sm text-slate-900">{friend.displayName}</p>
+          <p className="font-semibold text-sm text-slate-900">
+            {friend.displayName}
+          </p>
           <p className="text-xs text-slate-400">
             {friend.isOnline ? "Đang hoạt động" : "Ngoại tuyến"}
           </p>

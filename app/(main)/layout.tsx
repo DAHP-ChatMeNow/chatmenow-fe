@@ -2,6 +2,7 @@
 
 import { Sidebar } from "@/components/layout/sidebar";
 import { useAuthStore } from "@/store/use-auth-store";
+import { useUserProfile } from "@/hooks/use-user";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
@@ -12,6 +13,9 @@ export default function MainLayout({
 }) {
   const token = useAuthStore((state) => state.token);
   const router = useRouter();
+
+  // Auto-sync user profile từ server (chạy mỗi 30s và khi focus window)
+  useUserProfile();
 
   useEffect(() => {
     // Client-side route protection fallback

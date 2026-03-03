@@ -11,6 +11,7 @@ import {
   Loader,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -59,7 +60,16 @@ export default function ProfilePage() {
       reader.readAsDataURL(file);
 
       // Upload to backend
-      updateAvatar(file);
+      updateAvatar(file, {
+        onSuccess: () => {
+          // Clear preview after successful upload so S3 URL is used
+          setTimeout(() => setPreviewAvatar(null), 1000);
+        },
+        onError: () => {
+          // Clear preview on error too
+          setPreviewAvatar(null);
+        },
+      });
     }
   };
 
@@ -97,15 +107,21 @@ export default function ProfilePage() {
               className="relative group cursor-pointer"
               onClick={handleAvatarClick}
             >
-              <Avatar className="h-24 w-24 md:h-32 md:w-32 border-4 border-white shadow-md">
-                <AvatarImage
-                  src={previewAvatar || user.avatar || ""}
-                  alt={user.displayName}
+              {previewAvatar ? (
+                <Avatar className="h-24 w-24 md:h-32 md:w-32 border-4 border-white shadow-md">
+                  <AvatarImage src={previewAvatar} alt={user.displayName} />
+                  <AvatarFallback className="text-2xl font-bold bg-gradient-to-br from-blue-500 to-purple-500 text-white">
+                    {user.displayName?.charAt(0).toUpperCase() || "U"}
+                  </AvatarFallback>
+                </Avatar>
+              ) : (
+                <PresignedAvatar
+                  avatarKey={user.avatar}
+                  displayName={user.displayName}
+                  className="h-24 w-24 md:h-32 md:w-32 border-4 border-white shadow-md"
+                  fallbackClassName="text-2xl font-bold"
                 />
-                <AvatarFallback className="text-2xl font-bold bg-gradient-to-br from-blue-500 to-purple-500 text-white">
-                  {user.displayName?.charAt(0).toUpperCase() || "U"}
-                </AvatarFallback>
-              </Avatar>
+              )}
               <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300">
                 {isUploadingAvatar ? (
                   <Loader className="text-white w-6 h-6 md:w-8 md:h-8 animate-spin" />

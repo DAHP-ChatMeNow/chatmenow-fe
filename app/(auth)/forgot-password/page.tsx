@@ -28,8 +28,6 @@ export default function ForgotPasswordPage() {
   });
 
   const onSubmit = (data: ForgotPasswordFormValues) => {
-    // TODO: Implement forgot password API call
-    console.log("Forgot password:", data);
     toast.success("Đã gửi email khôi phục mật khẩu!");
     setIsSubmitted(true);
   };

@@ -63,7 +63,6 @@ export default function NotificationsPage() {
     requestId: string,
   ) => {
     if (!requestId) {
-      console.error("Request ID is missing", { notificationId, requestId });
       return;
     }
     setAcceptingIds([...acceptingIds, notificationId]);
@@ -79,7 +78,6 @@ export default function NotificationsPage() {
     requestId: string,
   ) => {
     if (!requestId) {
-      console.error("Request ID is missing", { notificationId, requestId });
       return;
     }
     setRejectingIds([...rejectingIds, notificationId]);

@@ -168,16 +168,6 @@ export default function ChatDetailPage() {
                       (msg.senderId as { _id?: string; id?: string })?.id;
                 const isMe = messageSenderId === currentUserId;
 
-                // Debug log
-                if (messages.indexOf(msg) === 0) {
-                  console.log("Message comparison:", {
-                    messageSenderId,
-                    currentUserId,
-                    isMe,
-                    rawSenderId: msg.senderId,
-                  });
-                }
-
                 return (
                   <div
                     key={msg.id}

@@ -26,16 +26,7 @@ export function ChatSidebar() {
   const contacts = contactsData?.contacts || [];
   const createMutation = useCreateConversation();
   
-  // Fallback cho userId - lấy id hoặc _id
   const currentUserId = user?.id || user?._id;
-  
-  console.log("ChatSidebar:", { 
-    userId: user?.id,
-    userIdFallback: user?._id, 
-    currentUserId,
-    conversationsCount: conversations.length,
-    firstConversation: conversations[0] 
-  });
   
   return (
     <aside className="w-[350px] border-r border-slate-200/60 flex flex-col h-full bg-gradient-to-b from-white to-slate-50/30 shrink-0">

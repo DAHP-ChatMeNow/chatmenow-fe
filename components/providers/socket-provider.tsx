@@ -112,135 +112,83 @@ export function SocketProvider({ children }: SocketProviderProps) {
     });
 
     socketInstance.on("connect", () => {
-      console.log("✅ Socket connected:", socketInstance.id);
-
-      // ✅ QUAN TRỌNG: Setup user room để nhận events
       const userId = user._id || user.id;
-      console.log("🔧 Setting up socket room for user:", userId);
       socketInstance.emit("setup", userId);
-
       setIsConnected(true);
-      toast.success("Kết nối thành công");
     });
 
-    // ✅ Listen for setup confirmation
     socketInstance.on("connected", () => {
-      console.log("✅ Socket room setup successful");
+      // Setup confirmed
     });
 
     socketInstance.on("disconnect", () => {
-      console.log("❌ Socket disconnected");
       setIsConnected(false);
-      toast.info("Mất kết nối");
     });
 
-    socketInstance.on("connect_error", (error) => {
-      console.error("Socket connection error:", error);
+    socketInstance.on("connect_error", () => {
       setIsConnected(false);
-      toast.error("Lỗi kết nối socket");
     });
 
-    // 🔍 Debug: Log tất cả socket events
-    socketInstance.onAny((eventName, ...args) => {
-      console.log(`📡 Socket event received: ${eventName}`, args);
-    });
-
-    // ✅ Real-time friend request received
     socketInstance.on(
       "friend_request_received",
       (data: FriendRequestReceivedEvent) => {
-        console.log("✅ Socket: Friend request received:", data);
-
-        // Đơn giản hóa: chỉ invalidate để refetch từ server
         queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
-
         toast.info(
           `${data.sender?.displayName || "Ai đó"} đã gửi lời mời kết bạn`,
         );
       },
     );
 
-    // ✅ Real-time friend request accepted
     socketInstance.on(
       "friend_request_accepted",
       (data: FriendRequestAcceptedEvent) => {
-        console.log("✅ Socket: Friend request accepted:", data);
-
-        // Đơn giản hóa: chỉ invalidate để refetch từ server
         queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
         queryClient.invalidateQueries({ queryKey: ["contacts"] });
-
         toast.success(
           `${data.receiverInfo?.displayName || data.acceptedBy?.displayName || "Người dùng"} đã chấp nhận lời mời kết bạn`,
         );
       },
     );
 
-    // ✅ Real-time friend request rejected (người gửi nhận event)
     socketInstance.on(
       "friend_request_rejected",
       (data: FriendRequestRejectedEvent) => {
-        console.log("✅ Socket: Friend request rejected:", data);
-
-        // Xóa khỏi sent requests
         queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
-
         toast.info(
           `${data.rejectedBy?.displayName || "Người dùng"} đã từ chối lời mời`,
         );
       },
     );
 
-    // ✅ Real-time friend request removed (người nhận nhận event khi tự từ chối)
     socketInstance.on(
       "friend_request_removed",
       (data: FriendRequestRemovedEvent) => {
-        console.log("✅ Socket: Friend request removed:", data);
-
-        // Xóa khỏi pending requests
         queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
-
         toast.success("Đã từ chối lời mời kết bạn");
       },
     );
 
-    // ✅ Real-time friend list updated (cả 2 users nhận event này)
     socketInstance.on("friend_list_updated", (data: FriendListUpdatedEvent) => {
-      console.log("✅ Socket: Friend list updated:", data);
-
-      // Update cả friend requests và contacts
       queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
-
       toast.success(
         `Bạn và ${data.newFriend?.displayName || "người dùng"} đã là bạn bè`,
       );
     });
 
-    // ✅ Real-time friend removed
     socketInstance.on("friend_removed", (data: FriendRemovedEvent) => {
-      console.log("✅ Socket: Friend removed:", data);
-
-      // Update contacts list
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
-
       toast.info("Một người bạn đã xóa bạn khỏi danh sách");
     });
 
-    // Real-time notifications (keep for other notification types)
     socketInstance.on("notification:new", (notification: Notification) => {
-      console.log("✅ Socket: New notification received:", notification);
-
-      // Đơn giản hóa: chỉ invalidate để refetch từ server
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
 
-      // Show toast based on notification type
       if (notification.type === "like") {
         toast.info("Ai đó đã thích bài viết của bạn");
       } else if (notification.type === "message") {
         toast.info("Bạn có tin nhắn mới");
       } else if (notification.type !== "friend_request") {
-        // Don't show toast for friend_request as it's handled by friend_request_received
         toast.info(notification.message);
       }
     });

@@ -1,9 +1,14 @@
 "use client";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 import { Button } from "@/components/ui/button";
 import { FriendRequest } from "@/types/friend-request";
-import { useAcceptFriendRequest, useRejectFriendRequest, useGetUserEmailById } from "@/hooks/use-contact";
+import {
+  useAcceptFriendRequest,
+  useRejectFriendRequest,
+  useGetUserEmailById,
+} from "@/hooks/use-contact";
 import { useState } from "react";
 import { Loader } from "lucide-react";
 
@@ -27,12 +32,14 @@ function FriendRequestItem({
   if (!requestId) return null;
 
   // Get sender ID from senderId field (which is populated as an object)
-  const senderObj = typeof request.senderId === 'string' 
-    ? { _id: request.senderId ,
-        displayName: request.sender?.displayName,
-        avatar: request.sender?.avatar
-    } 
-    : request.senderId;
+  const senderObj =
+    typeof request.senderId === "string"
+      ? {
+          _id: request.senderId,
+          displayName: request.sender?.displayName,
+          avatar: request.sender?.avatar,
+        }
+      : request.senderId;
   const senderId = senderObj?._id;
 
   // Only fetch email, sender info is already populated
@@ -46,21 +53,15 @@ function FriendRequestItem({
 
   return (
     <div className="flex items-center gap-4 p-4 rounded-xl border border-slate-100 hover:bg-slate-50">
-      <Avatar className="h-12 w-12">
-        {avatar ? (
-          <img src={avatar} alt={displayName} className="w-full h-full object-cover" />
-        ) : (
-          <AvatarFallback>
-            {displayName.charAt(0).toUpperCase()}
-          </AvatarFallback>
-        )}
-      </Avatar>
+      <PresignedAvatar
+        avatarKey={avatar}
+        displayName={displayName}
+        className="h-12 w-12"
+      />
 
       <div className="flex-1">
         <p className="font-semibold text-sm">{displayName}</p>
-        {email && (
-          <p className="text-xs text-slate-400">{email}</p>
-        )}
+        {email && <p className="text-xs text-slate-400">{email}</p>}
       </div>
 
       <div className="flex gap-2">
@@ -69,7 +70,11 @@ function FriendRequestItem({
           onClick={() => onAccept(requestId)}
           disabled={isProcessing}
         >
-          {isProcessing ? <Loader className="w-3 h-3 animate-spin" /> : "Chấp nhận"}
+          {isProcessing ? (
+            <Loader className="w-3 h-3 animate-spin" />
+          ) : (
+            "Chấp nhận"
+          )}
         </Button>
 
         <Button
@@ -85,24 +90,25 @@ function FriendRequestItem({
   );
 }
 
-export function FriendRequestsList({ requests, isLoading }: FriendRequestsListProps) {
+export function FriendRequestsList({
+  requests,
+  isLoading,
+}: FriendRequestsListProps) {
   const { mutate: acceptRequest } = useAcceptFriendRequest();
   const { mutate: rejectRequest } = useRejectFriendRequest();
   const [processingIds, setProcessingIds] = useState<string[]>([]);
 
   const handleAccept = (id: string) => {
-    setProcessingIds(prev => [...prev, id]);
+    setProcessingIds((prev) => [...prev, id]);
     acceptRequest(id, {
-      onSettled: () =>
-        setProcessingIds(prev => prev.filter(x => x !== id)),
+      onSettled: () => setProcessingIds((prev) => prev.filter((x) => x !== id)),
     });
   };
 
   const handleReject = (id: string) => {
-    setProcessingIds(prev => [...prev, id]);
+    setProcessingIds((prev) => [...prev, id]);
     rejectRequest(id, {
-      onSettled: () =>
-        setProcessingIds(prev => prev.filter(x => x !== id)),
+      onSettled: () => setProcessingIds((prev) => prev.filter((x) => x !== id)),
     });
   };
 
@@ -111,12 +117,14 @@ export function FriendRequestsList({ requests, isLoading }: FriendRequestsListPr
   }
 
   if (!requests || requests.length === 0) {
-    return <p className="text-center text-slate-500">Không có lời mời kết bạn nào</p>;
+    return (
+      <p className="text-center text-slate-500">Không có lời mời kết bạn nào</p>
+    );
   }
 
   return (
     <div className="space-y-3">
-      {requests.map(req => (
+      {requests.map((req) => (
         <FriendRequestItem
           key={req._id || req.id}
           request={req}
@@ -128,4 +136,3 @@ export function FriendRequestsList({ requests, isLoading }: FriendRequestsListPr
     </div>
   );
 }
-
