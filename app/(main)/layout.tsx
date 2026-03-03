@@ -36,7 +36,7 @@ export default function MainLayout({
       {/* Floating Notification Button - Hide on notifications page */}
       {pathname !== "/notifications" && <FloatingNotificationButton />}
 
-      <aside className="hidden md:flex w-[70px] lg:w-[80px] shrink-0 border-r border-slate-200/60 dark:border-slate-700/50 flex-col items-center py-4 bg-white/80 backdrop-blur-xl dark:bg-slate-900/50 dark:backdrop-blur-xl z-50 shadow-lg dark:shadow-slate-950/50">
+      <aside className="hidden md:flex w-[90px] lg:w-[100px] shrink-0 border-r border-slate-200/60 dark:border-slate-700/50 flex-col items-center py-4 bg-white/80 backdrop-blur-xl dark:bg-slate-900/50 dark:backdrop-blur-xl z-50 shadow-lg dark:shadow-slate-950/50">
         <Sidebar mode="desktop" />
       </aside>
 
