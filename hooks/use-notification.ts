@@ -9,7 +9,8 @@ export const useNotifications = () => {
     queryKey: ["notifications"],
     queryFn: (): Promise<NotificationsResponse> =>
       notificationService.getNotifications(),
-    refetchInterval: 30000, // Refetch every 30 seconds
+    refetchOnWindowFocus: false, // ❌ Tắt auto-refetch khi focus tab
+    staleTime: 5 * 60 * 1000, // 5 phút - cho phép invalidate work
   });
 };
 
@@ -46,7 +47,9 @@ export const useMarkAllNotificationsAsRead = () => {
       toast.success("Đã đánh dấu tất cả thông báo là đã đọc");
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || "Không thể đánh dấu thông báo");
+      toast.error(
+        error?.response?.data?.message || "Không thể đánh dấu thông báo",
+      );
     },
   });
 };

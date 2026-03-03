@@ -1,6 +1,12 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode,
+} from "react";
 import { io, Socket } from "socket.io-client";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useQueryClient } from "@tanstack/react-query";
@@ -8,7 +14,58 @@ import { toast } from "sonner";
 import { BASE_SOCKET_URL } from "@/types/utils";
 import { Notification } from "@/types/notification";
 
-const SOCKET_URL = BASE_SOCKET_URL || "http://192.168.1.11:5000"; 
+const SOCKET_URL = BASE_SOCKET_URL;
+
+// ✅ Socket event interfaces
+interface FriendRequestReceivedEvent {
+  requestId: string;
+  sender: {
+    _id: string;
+    displayName: string;
+    avatar?: string;
+  };
+  createdAt: string;
+}
+
+interface FriendRequestAcceptedEvent {
+  acceptedBy: {
+    _id: string;
+    displayName: string;
+    avatar?: string;
+  };
+  requestId: string;
+  receiverInfo?: {
+    _id: string;
+    displayName: string;
+    avatar?: string;
+  };
+}
+
+interface FriendRequestRejectedEvent {
+  rejectedBy: {
+    _id: string;
+    displayName: string;
+  };
+  requestId: string;
+}
+
+interface FriendRequestRemovedEvent {
+  requestId: string;
+}
+
+interface FriendListUpdatedEvent {
+  newFriend: {
+    _id: string;
+    displayName: string;
+    avatar?: string;
+    bio?: string;
+    isOnline?: boolean;
+  };
+}
+
+interface FriendRemovedEvent {
+  removedFriendId: string;
+}
 
 interface SocketContextType {
   socket: Socket | null;
@@ -36,10 +93,11 @@ export function SocketProvider({ children }: SocketProviderProps) {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const token = useAuthStore((state) => state.token);
+  const user = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    if (!token) {
+    if (!token || !user?._id) {
       if (socket) {
         socket.disconnect();
         setSocket(null);
@@ -54,49 +112,85 @@ export function SocketProvider({ children }: SocketProviderProps) {
     });
 
     socketInstance.on("connect", () => {
-      console.log("✅ Socket connected:", socketInstance.id);
+      const userId = user._id || user.id;
+      socketInstance.emit("setup", userId);
       setIsConnected(true);
-      toast.success("Kết nối thành công");
+    });
+
+    socketInstance.on("connected", () => {
+      // Setup confirmed
     });
 
     socketInstance.on("disconnect", () => {
-      console.log("❌ Socket disconnected");
       setIsConnected(false);
-      toast.info("Mất kết nối");
     });
 
-    socketInstance.on("connect_error", (error) => {
-      console.error("Socket connection error:", error);
+    socketInstance.on("connect_error", () => {
       setIsConnected(false);
-      toast.error("Lỗi kết nối socket");
     });
 
-    // Real-time notifications
+    socketInstance.on(
+      "friend_request_received",
+      (data: FriendRequestReceivedEvent) => {
+        queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+        toast.info(
+          `${data.sender?.displayName || "Ai đó"} đã gửi lời mời kết bạn`,
+        );
+      },
+    );
+
+    socketInstance.on(
+      "friend_request_accepted",
+      (data: FriendRequestAcceptedEvent) => {
+        queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+        queryClient.invalidateQueries({ queryKey: ["contacts"] });
+        toast.success(
+          `${data.receiverInfo?.displayName || data.acceptedBy?.displayName || "Người dùng"} đã chấp nhận lời mời kết bạn`,
+        );
+      },
+    );
+
+    socketInstance.on(
+      "friend_request_rejected",
+      (data: FriendRequestRejectedEvent) => {
+        queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+        toast.info(
+          `${data.rejectedBy?.displayName || "Người dùng"} đã từ chối lời mời`,
+        );
+      },
+    );
+
+    socketInstance.on(
+      "friend_request_removed",
+      (data: FriendRequestRemovedEvent) => {
+        queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+        toast.success("Đã từ chối lời mời kết bạn");
+      },
+    );
+
+    socketInstance.on("friend_list_updated", (data: FriendListUpdatedEvent) => {
+      queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      toast.success(
+        `Bạn và ${data.newFriend?.displayName || "người dùng"} đã là bạn bè`,
+      );
+    });
+
+    socketInstance.on("friend_removed", (data: FriendRemovedEvent) => {
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      toast.info("Một người bạn đã xóa bạn khỏi danh sách");
+    });
+
     socketInstance.on("notification:new", (notification: Notification) => {
-      // Add to notifications list
-      queryClient.setQueryData(["notifications"], (oldData: any) => {
-        if (!oldData) return { notifications: [notification], unreadCount: 1 };
-        return {
-          notifications: [notification, ...oldData.notifications],
-          unreadCount: oldData.unreadCount + 1,
-        };
-      });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
 
-      // Show toast based on notification type
-      if (notification.type === "friend_request") {
-        toast.info("Bạn có lời mời kết bạn mới");
-      } else if (notification.type === "like") {
+      if (notification.type === "like") {
         toast.info("Ai đó đã thích bài viết của bạn");
       } else if (notification.type === "message") {
         toast.info("Bạn có tin nhắn mới");
-      } else {
+      } else if (notification.type !== "friend_request") {
         toast.info(notification.message);
       }
-    });
-
-    // Real-time friend request events
-    socketInstance.on("friendRequest:received", () => {
-      queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
     });
 
     // Real-time like event
@@ -108,9 +202,19 @@ export function SocketProvider({ children }: SocketProviderProps) {
     setSocket(socketInstance);
 
     return () => {
+      socketInstance.off("connected");
+      socketInstance.off("friend_request_received");
+      socketInstance.off("friend_request_accepted");
+      socketInstance.off("friend_request_rejected");
+      socketInstance.off("friend_request_removed");
+      socketInstance.off("friend_list_updated");
+      socketInstance.off("friend_removed");
+      socketInstance.off("notification:new");
+      socketInstance.off("post:liked");
+      socketInstance.offAny();
       socketInstance.disconnect();
     };
-  }, [token, queryClient]);
+  }, [token, user, queryClient]);
 
   return (
     <SocketContext.Provider value={{ socket, isConnected }}>

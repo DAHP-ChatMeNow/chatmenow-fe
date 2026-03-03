@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { userService, UpdateProfilePayload } from "@/api/user";
 import { useAuthStore } from "@/store/use-auth-store";
@@ -11,7 +11,9 @@ export const useUpdateProfile = () => {
   const { setAuth } = useAuthStore();
 
   return useMutation({
-    mutationFn: async (data: UpdateProfilePayload & { avatarFile?: File; coverFile?: File }) => {
+    mutationFn: async (
+      data: UpdateProfilePayload & { avatarFile?: File; coverFile?: File },
+    ) => {
       const { avatarFile, coverFile, ...profileData } = data;
 
       return userService.updateProfile(profileData);
@@ -30,9 +32,9 @@ export const useUpdateProfile = () => {
     },
 
     onError: (error: any) => {
-      const message = error?.response?.data?.message || "Không thể cập nhật hồ sơ";
+      const message =
+        error?.response?.data?.message || "Không thể cập nhật hồ sơ";
       toast.error(message);
-      console.error("Profile update error:", error);
     },
   });
 };
@@ -44,7 +46,7 @@ export const useUpdateAvatar = () => {
   return useMutation({
     mutationFn: async (avatarFile: File) => {
       validateImageFile(avatarFile);
-      return userService.updateAvatar(avatarFile);
+      return userService.uploadAvatar(avatarFile);
     },
 
     onSuccess: (response) => {
@@ -52,12 +54,43 @@ export const useUpdateAvatar = () => {
       if (token) {
         setAuth(response.user, token);
       }
+      // Invalidate tất cả queries liên quan
       queryClient.invalidateQueries({ queryKey: ["profile"] });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+      // Invalidate tất cả presigned URLs để refetch ảnh mới
+      queryClient.invalidateQueries({ queryKey: ["presigned-url"] });
       toast.success("Avatar đã được cập nhật");
     },
 
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || "Không thể cập nhật avatar");
+      toast.error(
+        error?.response?.data?.message || "Không thể cập nhật avatar",
+      );
+    },
+  });
+};
+
+export const useDeleteAvatar = () => {
+  const queryClient = useQueryClient();
+  const { setAuth } = useAuthStore();
+
+  return useMutation({
+    mutationFn: userService.deleteAvatar,
+
+    onSuccess: (response) => {
+      const token = useAuthStore.getState().token;
+      if (token) {
+        setAuth(response.user, token);
+      }
+      // Invalidate tất cả queries liên quan
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+      queryClient.invalidateQueries({ queryKey: ["presigned-url"] });
+      toast.success(response.msg || "Avatar đã được xóa");
+    },
+
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || "Không thể xóa avatar");
     },
   });
 };
@@ -82,7 +115,30 @@ export const useUpdateCoverImage = () => {
     },
 
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || "Không thể cập nhật ảnh bìa");
+      toast.error(
+        error?.response?.data?.message || "Không thể cập nhật ảnh bìa",
+      );
     },
+  });
+};
+
+/**
+ * Hook to get presigned URL for viewing images
+ * @param key - S3 object key (e.g., "avatars/xxx.jpg")
+ * @param enabled - Whether to fetch the URL
+ */
+export const usePresignedUrl = (
+  key: string | null | undefined,
+  enabled: boolean = true,
+) => {
+  return useQuery({
+    queryKey: ["presigned-url", key],
+    queryFn: () => {
+      if (!key) throw new Error("Key is required");
+      return userService.getPresignedUrl(key);
+    },
+    enabled: enabled && !!key,
+    staleTime: 1000 * 60 * 50, // 50 minutes (presigned URLs expire in 1 hour)
+    gcTime: 1000 * 60 * 55, // 55 minutes
   });
 };

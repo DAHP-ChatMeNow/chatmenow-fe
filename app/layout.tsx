@@ -39,7 +39,7 @@ export default function RootLayout({
           <LanguageProvider>
             <QueryProvider>
               <SocketProvider>
-                <div className="h-screen w-full overflow-hidden bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+                <div className="min-h-screen w-full bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
                   {children}
                   <Toaster position="top-right" richColors />
                 </div>

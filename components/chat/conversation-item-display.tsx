@@ -3,6 +3,7 @@
 import { useConversationDisplay } from "@/hooks/use-chat";
 import { ChatItem } from "./chat-item";
 import { Conversation } from "@/types/conversation";
+import { formatMessageTime } from "@/lib/utils";
 
 export function ConversationItemDisplay({
   conversation,
@@ -13,16 +14,10 @@ export function ConversationItemDisplay({
   currentUserId: string | undefined;
   isActive: boolean;
 }) {
-  console.log("ConversationItemDisplay props:", { 
-    conversationId: conversation?.id,
-    conversationType: conversation?.type, 
+  const { displayName, avatar } = useConversationDisplay(
+    conversation,
     currentUserId,
-    hasConversation: !!conversation 
-  });
-
-  const { displayName, avatar } = useConversationDisplay(conversation, currentUserId);
-  
-  console.log("ConversationItemDisplay display data:", { displayName, avatar });
+  );
 
   return (
     <ChatItem
@@ -30,7 +25,7 @@ export function ConversationItemDisplay({
       avatar={avatar}
       name={displayName || "Unknown"}
       lastMsg={conversation.lastMessage?.content || "No messages yet"}
-      time={conversation.lastMessage?.createdAt?.toString() || ""}
+      time={formatMessageTime(conversation.lastMessage?.createdAt)}
       unread={0}
       isActive={isActive}
     />

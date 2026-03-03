@@ -1,9 +1,23 @@
 "use client";
 
-import { Bell, UserPlus, MessageSquare, Heart, Loader } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { useState } from "react";
+import {
+  Bell,
+  UserPlus,
+  MessageSquare,
+  Heart,
+  Loader,
+  ChevronRight,
+} from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import {
   useNotifications,
   useMarkAllNotificationsAsRead,
@@ -12,7 +26,7 @@ import {
   useAcceptFriendRequest as useAcceptFriendRequestContact,
   useRejectFriendRequest as useRejectFriendRequestContact,
 } from "@/hooks/use-contact";
-import { useState, useEffect } from "react";
+import Link from "next/link";
 
 const getNotificationIcon = (type: string) => {
   switch (type) {
@@ -40,31 +54,27 @@ const getNotificationBgColor = (type: string) => {
   }
 };
 
-export default function NotificationsPage() {
-  const { data: notificationsData, isLoading, error } = useNotifications();
+export function NotificationDropdown() {
+  const { data: notificationsData, isLoading } = useNotifications();
   const { mutate: markAllAsRead, isPending: isMarkingAll } =
     useMarkAllNotificationsAsRead();
   const { mutate: acceptFriendRequest } = useAcceptFriendRequestContact();
   const { mutate: rejectFriendRequest } = useRejectFriendRequestContact();
   const [acceptingIds, setAcceptingIds] = useState<string[]>([]);
   const [rejectingIds, setRejectingIds] = useState<string[]>([]);
-  const [isMounted, setIsMounted] = useState(false);
-
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
 
   const notifications = notificationsData?.notifications || [];
-  // Only show unread notifications
   const unreadNotifications = notifications.filter((noti) => !noti.isRead);
+  const unreadCount = unreadNotifications.length;
+
+  // Show max 5 notifications in dropdown
+  const recentNotifications = unreadNotifications.slice(0, 5);
 
   const handleAcceptFriendRequest = (
     notificationId: string,
     requestId: string,
   ) => {
-    if (!requestId) {
-      return;
-    }
+    if (!requestId) return;
     setAcceptingIds([...acceptingIds, notificationId]);
     acceptFriendRequest(requestId, {
       onSettled: () => {
@@ -77,9 +87,7 @@ export default function NotificationsPage() {
     notificationId: string,
     requestId: string,
   ) => {
-    if (!requestId) {
-      return;
-    }
+    if (!requestId) return;
     setRejectingIds([...rejectingIds, notificationId]);
     rejectFriendRequest(requestId, {
       onSettled: () => {
@@ -89,11 +97,6 @@ export default function NotificationsPage() {
   };
 
   const formatTime = (date: Date) => {
-    if (!isMounted) {
-      // Return static placeholder during SSR to avoid hydration mismatch
-      return "";
-    }
-
     const now = new Date();
     const diffMs = now.getTime() - new Date(date).getTime();
     const diffMins = Math.floor(diffMs / 60000);
@@ -101,72 +104,91 @@ export default function NotificationsPage() {
     const diffDays = Math.floor(diffMs / 86400000);
 
     if (diffMins < 1) return "vừa xong";
-    if (diffMins < 60) return `${diffMins} phút trước`;
-    if (diffHours < 24) return `${diffHours} giờ trước`;
-    if (diffDays < 7) return `${diffDays} ngày trước`;
+    if (diffMins < 60) return `${diffMins} phút`;
+    if (diffHours < 24) return `${diffHours} giờ`;
+    if (diffDays < 7) return `${diffDays} ngày`;
     return new Date(date).toLocaleDateString("vi-VN");
   };
-  return (
-    <div className="flex flex-col h-full bg-white w-full">
-      <header className="h-[70px] border-b border-slate-100 flex items-center justify-between px-6 sticky top-0 bg-white z-10 w-full">
-        <h1 className="text-xl font-bold text-slate-900">Thông báo</h1>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-blue-600 font-medium"
-          onClick={() => markAllAsRead()}
-          disabled={isMarkingAll || notifications.length === 0}
-        >
-          Đánh dấu đã đọc tất cả
-        </Button>
-      </header>
 
-      <ScrollArea className="flex-1 w-full">
-        <div className="w-full p-4 md:p-8 space-y-2">
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="relative p-3 transition-all duration-200 rounded-2xl text-slate-400 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-700/50 hover:scale-105">
+          <Bell className="w-6 h-6" />
+          {unreadCount > 0 && (
+            <>
+              <span className="absolute w-2 h-2 bg-red-500 border border-white rounded-full top-1 right-1 dark:border-slate-800" />
+              <span className="absolute -top-1 -right-1 min-w-[20px] h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1.5">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            </>
+          )}
+        </button>
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent
+        align="center"
+        className="p-0 bg-white border shadow-2xl w-96 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-2xl"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+            Thông báo
+          </h3>
+          {notifications.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="px-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950 h-7"
+              onClick={() => markAllAsRead()}
+              disabled={isMarkingAll}
+            >
+              Đánh dấu đã đọc
+            </Button>
+          )}
+        </div>
+
+        {/* Notifications List */}
+        <ScrollArea className="max-h-[400px]">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader className="w-6 h-6 animate-spin text-slate-400" />
             </div>
-          ) : error ? (
-            <div className="text-center py-12 text-slate-500">
-              Không thể tải thông báo
-            </div>
-          ) : notifications.length > 0 ? (
-            unreadNotifications.length > 0 ? (
-              unreadNotifications.map((noti, index) => (
+          ) : recentNotifications.length > 0 ? (
+            <div className="py-2">
+              {recentNotifications.map((noti, index) => (
                 <div
                   key={`${noti.id}-${index}`}
-                  className={`flex items-start gap-4 p-4 rounded-2xl transition-all cursor-pointer ${noti.isRead ? "hover:bg-slate-50" : "bg-blue-50/40 border border-blue-100 shadow-sm"}`}
+                  className="flex items-start gap-3 px-4 py-3 transition-colors cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50"
                 >
-                  <div className="relative">
-                    <Avatar className="h-12 w-12 border border-white shadow-sm">
-                      <AvatarFallback className="bg-slate-100 font-bold">
+                  <div className="relative flex-shrink-0">
+                    <Avatar className="w-10 h-10 border border-white shadow-sm">
+                      <AvatarFallback className="text-sm font-bold bg-slate-100 dark:bg-slate-700">
                         {typeof noti.senderId === "string"
                           ? noti.senderId.charAt(0).toUpperCase()
-                          : (noti.senderId as any)?.name
-                              ?.charAt(0)
-                              .toUpperCase() || "N"}
+                          : "N"}
                       </AvatarFallback>
                     </Avatar>
                     <div
-                      className={`absolute -bottom-1 -right-1 p-1 rounded-full border-2 border-white ${getNotificationBgColor(noti.type)}`}
+                      className={`absolute -bottom-0.5 -right-0.5 p-1 rounded-full border-2 border-white dark:border-slate-800 ${getNotificationBgColor(noti.type)}`}
                     >
                       {getNotificationIcon(noti.type)}
                     </div>
                   </div>
 
-                  <div className="flex-1 space-y-1">
-                    <p className="text-[14.5px] text-slate-900 leading-tight">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm leading-snug text-slate-900 dark:text-slate-100">
                       {noti.message}
                     </p>
-                    <p className="text-[12px] text-slate-400 font-medium">
+                    <p className="mt-1 text-xs font-medium text-blue-600 dark:text-blue-400">
                       {formatTime(noti.createdAt)}
                     </p>
+
                     {noti.type === "friend_request" && (
-                      <div className="flex gap-2 mt-3">
+                      <div className="flex gap-2 mt-2">
                         <Button
                           size="sm"
-                          className="bg-blue-600 hover:bg-blue-700 h-8 px-4 rounded-lg"
+                          className="px-3 text-xs bg-blue-600 rounded-lg hover:bg-blue-700 h-7"
                           onClick={() =>
                             handleAcceptFriendRequest(
                               noti.id,
@@ -184,7 +206,7 @@ export default function NotificationsPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-8 px-4 rounded-lg"
+                          className="px-3 text-xs rounded-lg h-7 border-slate-300 dark:border-slate-600"
                           onClick={() =>
                             handleRejectFriendRequest(
                               noti.id,
@@ -202,23 +224,36 @@ export default function NotificationsPage() {
                       </div>
                     )}
                   </div>
+
                   {!noti.isRead && (
-                    <div className="w-2.5 h-2.5 bg-blue-600 rounded-full mt-2" />
+                    <div className="w-2 h-2 bg-blue-600 rounded-full mt-1.5 flex-shrink-0" />
                   )}
                 </div>
-              ))
-            ) : (
-              <div className="text-center py-12 text-slate-500">
-                Bạn đã đọc tất cả thông báo
-              </div>
-            )
+              ))}
+            </div>
           ) : (
-            <div className="text-center py-12 text-slate-500">
-              Bạn không có thông báo nào
+            <div className="py-12 text-center text-slate-500 dark:text-slate-400">
+              <Bell className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <p className="text-sm">Không có thông báo mới</p>
             </div>
           )}
-        </div>
-      </ScrollArea>
-    </div>
+        </ScrollArea>
+
+        {/* Footer - View All */}
+        {notifications.length > 0 && (
+          <>
+            <DropdownMenuSeparator className="bg-slate-200 dark:bg-slate-700" />
+            <Link href="/notifications" className="block">
+              <div className="px-4 py-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                <p className="flex items-center justify-center gap-1 text-sm font-semibold text-center text-blue-600 dark:text-blue-400">
+                  Xem tất cả thông báo
+                  <ChevronRight className="w-4 h-4" />
+                </p>
+              </div>
+            </Link>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

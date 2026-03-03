@@ -5,7 +5,12 @@ import { isAxiosError } from "axios";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { authService, LoginPayload, RegisterPayload, AuthResponse } from "@/api/auth";
+import {
+  authService,
+  LoginPayload,
+  RegisterPayload,
+  AuthResponse,
+} from "@/api/auth";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useEffect } from "react";
 
@@ -39,15 +44,13 @@ export const useLogin = () => {
 };
 
 export const useRegister = () => {
-  const setAuth = useAuthStore((state) => state.setAuth);
   const router = useRouter();
 
   return useMutation<AuthResponse, unknown, RegisterPayload>({
     mutationFn: authService.register,
     onSuccess: (data) => {
-      setAuth(data.user, data.token);
-      toast.success(data.message ?? "Đăng ký thành công");
-      router.push("/messages");
+      toast.success(data.message ?? "Đăng ký thành công! Vui lòng đăng nhập.");
+      router.push("/login");
     },
     onError: (error) => {
       toast.error(getErrorMessage(error));

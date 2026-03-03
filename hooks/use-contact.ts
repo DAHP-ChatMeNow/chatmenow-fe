@@ -12,8 +12,11 @@ export const useContacts = () => {
   const user = useAuthStore((state) => state.user);
   return useQuery({
     queryKey: ["contacts", user?._id],
-    queryFn: (): Promise<ContactsResponse> => contactService.getContacts(user?._id || ""),
+    queryFn: (): Promise<ContactsResponse> =>
+      contactService.getContacts(user?._id || ""),
     enabled: !!user?._id,
+    refetchOnWindowFocus: false, // ❌ Tắt auto-refetch khi focus tab
+    staleTime: 5 * 60 * 1000, // 5 phút - cho phép invalidate work
   });
 };
 
@@ -31,8 +34,9 @@ export const useSearchAndAddFriend = () => {
   return useMutation({
     mutationFn: contactService.searchAndAddFriend,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
-      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      // ❌ Bỏ invalidateQueries vì socket sẽ tự động update
+      // queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+      // queryClient.invalidateQueries({ queryKey: ["contacts"] });
       toast.success("Đã gửi lời mời kết bạn");
     },
     onError: (error: any) => {
@@ -74,6 +78,8 @@ export const useFriendRequests = () => {
       const res = await contactService.getFriendRequests();
       return res as { requests: FriendRequest[] };
     },
+    refetchOnWindowFocus: false, // ❌ Tắt auto-refetch khi focus tab
+    staleTime: 5 * 60 * 1000, // 5 phút - cho phép invalidate work
   });
 };
 
@@ -83,7 +89,8 @@ export const useSendFriendRequest = () => {
   return useMutation({
     mutationFn: contactService.sendFriendRequest,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+      // ❌ Bỏ invalidateQueries vì socket sẽ tự động update
+      // queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
       toast.success("Đã gửi lời mời kết bạn");
     },
     onError: (error: any) => {
@@ -98,12 +105,15 @@ export const useAcceptFriendRequest = () => {
   return useMutation({
     mutationFn: contactService.acceptFriendRequest,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
-      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      // ❌ Bỏ invalidateQueries vì socket sẽ tự động update
+      // queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+      // queryClient.invalidateQueries({ queryKey: ["contacts"] });
       toast.success("Đã chấp nhận lời mời kết bạn");
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || "Không thể chấp nhận lời mời");
+      toast.error(
+        error?.response?.data?.message || "Không thể chấp nhận lời mời",
+      );
     },
   });
 };
@@ -114,11 +124,14 @@ export const useRejectFriendRequest = () => {
   return useMutation({
     mutationFn: contactService.rejectFriendRequest,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+      // ❌ Bỏ invalidateQueries vì socket sẽ tự động update
+      // queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
       toast.success("Đã từ chối lời mời kết bạn");
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || "Không thể từ chối lời mời");
+      toast.error(
+        error?.response?.data?.message || "Không thể từ chối lời mời",
+      );
     },
   });
 };
@@ -129,6 +142,7 @@ export const useRemoveFriend = () => {
   return useMutation({
     mutationFn: contactService.removeFriend,
     onSuccess: () => {
+      // ⚠️ Giữ lại invalidate cho remove friend vì BE chưa có socket event
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       toast.success("Đã xóa bạn");
     },

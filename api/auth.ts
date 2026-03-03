@@ -18,6 +18,11 @@ export type AuthResponse = {
   message?: string;
 };
 
+export type GetMeResponse = {
+  success: boolean;
+  user: User;
+};
+
 const login = async (payload: LoginPayload) => {
   const { data } = await api.post<AuthResponse>("/auth/login", payload);
   return data;
@@ -29,8 +34,8 @@ const register = async (payload: RegisterPayload) => {
 };
 
 const getMe = async () => {
-  const { data } = await api.get<User>("/auth/getMe");
-  return data;
+  const { data } = await api.get<GetMeResponse>("/auth/getMe");
+  return data.user; // Extract user from response
 };
 
 export const authService = { login, register, getMe };

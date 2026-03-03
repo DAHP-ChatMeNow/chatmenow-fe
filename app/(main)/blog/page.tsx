@@ -9,6 +9,7 @@ import {
   MoreHorizontal,
   Loader2,
   Send,
+  Plus,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -111,7 +112,7 @@ export default function BlogPage() {
   return (
     <div className="flex flex-col w-full h-full bg-slate-50/50">
       <ScrollArea className="flex-1 w-full">
-        <div className="w-full px-4 py-4 space-y-6 md:py-8 md:px-6">
+        <div className="max-w-3xl mx-auto px-4 py-4 space-y-6 md:py-8 md:px-6">
           {/* Create Post */}
           <div className="p-4 space-y-4 bg-white border shadow-sm md:p-6 rounded-2xl border-slate-100">
             <div className="flex gap-3 md:gap-4">
@@ -150,6 +151,95 @@ export default function BlogPage() {
                   "Đăng bài"
                 )}
               </Button>
+            </div>
+          </div>
+
+          {/* Stories */}
+          <div className="bg-white border shadow-sm rounded-2xl border-slate-100 p-2 md:p-4">
+            <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2">
+              {/* Create Story */}
+              <button className="relative flex-shrink-0 w-[110px] h-[190px] md:w-[120px] md:h-[200px] rounded-xl overflow-hidden group bg-gradient-to-b from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900 hover:scale-[1.02] transition-transform">
+                <div className="absolute inset-0 flex flex-col items-center justify-end pb-4">
+                  <div className="flex items-center justify-center w-10 h-10 bg-white dark:bg-slate-800 rounded-full mb-2 shadow-lg">
+                    <div className="flex items-center justify-center w-8 h-8 bg-blue-600 rounded-full group-hover:bg-blue-700 transition-colors">
+                      <Plus className="w-5 h-5 text-white" />
+                    </div>
+                  </div>
+                  <span className="text-xs font-semibold text-slate-900 dark:text-white">
+                    Tạo tin
+                  </span>
+                </div>
+              </button>
+
+              {/* Sample Stories - Replace with real data */}
+              {[
+                {
+                  id: 1,
+                  name: "Ngọc Bích",
+                  avatar: "https://i.pravatar.cc/150?img=1",
+                  image:
+                    "https://images.unsplash.com/photo-1516726817505-f5ed825624d8?w=400&h=600&fit=crop",
+                },
+                {
+                  id: 2,
+                  name: "Thanh Thảo",
+                  avatar: "https://i.pravatar.cc/150?img=2",
+                  image:
+                    "https://images.unsplash.com/photo-1506748686214-e9df14d4d9d0?w=400&h=600&fit=crop",
+                },
+                {
+                  id: 3,
+                  name: "Trần Lê Văn Hùng",
+                  avatar: "https://i.pravatar.cc/150?img=3",
+                  image:
+                    "https://images.unsplash.com/photo-1511988617509-a57c8a288659?w=400&h=600&fit=crop",
+                },
+                {
+                  id: 4,
+                  name: "Thu Thủy",
+                  avatar: "https://i.pravatar.cc/150?img=4",
+                  image:
+                    "https://images.unsplash.com/photo-1500462918059-b1a0cb512f1d?w=400&h=600&fit=crop",
+                },
+                {
+                  id: 5,
+                  name: "Thanh Nhàn",
+                  avatar: "https://i.pravatar.cc/150?img=5",
+                  image:
+                    "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&h=600&fit=crop",
+                },
+              ].map((story) => (
+                <button
+                  key={story.id}
+                  className="relative flex-shrink-0 w-[110px] h-[190px] md:w-[120px] md:h-[200px] rounded-xl overflow-hidden group hover:scale-[1.02] transition-transform"
+                >
+                  {/* Background Image */}
+                  <div
+                    className="absolute inset-0 bg-cover bg-center"
+                    style={{ backgroundImage: `url(${story.image})` }}
+                  >
+                    {/* Dark Overlay at bottom for text readability */}
+                    <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/60" />
+                  </div>
+
+                  {/* Avatar with blue ring at top-left */}
+                  <div className="absolute top-3 left-3">
+                    <div className="p-0.5 bg-blue-500 rounded-full">
+                      <Avatar className="w-9 h-9 border-2 border-white">
+                        <AvatarImage src={story.avatar} />
+                        <AvatarFallback>{story.name[0]}</AvatarFallback>
+                      </Avatar>
+                    </div>
+                  </div>
+
+                  {/* Name at bottom */}
+                  <div className="absolute bottom-0 left-0 right-0 p-3">
+                    <span className="text-xs font-semibold text-white drop-shadow-lg line-clamp-2">
+                      {story.name}
+                    </span>
+                  </div>
+                </button>
+              ))}
             </div>
           </div>
 
