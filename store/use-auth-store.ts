@@ -7,7 +7,8 @@ import { persist } from "zustand/middleware";
 interface AuthState {
   user: User | null;
   token: string | null;
-  setAuth: (user: User, token: string) => void;
+  role: string | null;
+  setAuth: (user: User, token: string, role?: string) => void;
   logout: () => void;
 }
 
@@ -19,6 +20,12 @@ const setAuthCookie = (token: string) => {
 // Helper to remove auth cookie
 const removeAuthCookie = () => {
   document.cookie = "auth-token=; path=/; max-age=0";
+  document.cookie = "user-role=; path=/; max-age=0";
+};
+
+// Helper to set role cookie
+const setRoleCookie = (role: string) => {
+  document.cookie = `user-role=${role}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
 };
 
 export const useAuthStore = create<AuthState>()(
@@ -26,16 +33,18 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       user: null,
       token: null,
-      setAuth: (user, token) => {
-        set({ user, token });
+      role: null,
+      setAuth: (user, token, role) => {
+        set({ user, token, role: role ?? null });
         setAuthCookie(token);
+        if (role) setRoleCookie(role);
         // Trigger storage event để sync với tabs khác
         if (typeof window !== "undefined") {
           window.dispatchEvent(new Event("auth-updated"));
         }
       },
       logout: () => {
-        set({ user: null, token: null });
+        set({ user: null, token: null, role: null });
         localStorage.removeItem("auth-storage");
         removeAuthCookie();
       },

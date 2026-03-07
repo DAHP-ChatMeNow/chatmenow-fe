@@ -1,6 +1,11 @@
 "use client";
 
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { toast } from "sonner";
 import { postService, CreatePostPayload } from "@/api/post";
 import { Post } from "@/types/post";
@@ -114,9 +119,12 @@ export const useAddComment = () => {
     },
     onSuccess: (newComment) => {
       // Update comments list
-      queryClient.setQueryData(["comments", newComment.postId], (oldData: Comment[] | undefined) => {
-        return [...(oldData || []), newComment];
-      });
+      queryClient.setQueryData(
+        ["comments", newComment.postId],
+        (oldData: Comment[] | undefined) => {
+          return [...(oldData || []), newComment];
+        },
+      );
 
       // Update post comments count in feed
       queryClient.setQueryData(["posts", "feed"], (oldData: any) => {
@@ -146,5 +154,16 @@ export const useAddComment = () => {
     onError: (error: any) => {
       toast.error(error?.response?.data?.message || "Không thể bình luận");
     },
+  });
+};
+
+export const useUserPosts = (userId: string | undefined) => {
+  return useInfiniteQuery({
+    queryKey: ["posts", "me"],
+    queryFn: ({ pageParam }) => postService.getMyPosts({ pageParam }),
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore ? lastPage.nextPage : undefined,
+    initialPageParam: 1,
+    enabled: !!userId,
   });
 };

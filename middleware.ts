@@ -3,41 +3,47 @@ import type { NextRequest } from "next/server";
 
 export function middleware(request: NextRequest) {
   const token = request.cookies.get("auth-token")?.value;
+  const role = request.cookies.get("user-role")?.value;
   const { pathname } = request.nextUrl;
 
-  
   const publicRoutes = ["/login", "/signup"];
-  const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route));
+  const isPublicRoute = publicRoutes.some((route) =>
+    pathname.startsWith(route),
+  );
 
-  
-  const protectedRoutes = ["/messages", "/contacts", "/blog", "/profile", "/notifications"];
-  const isProtectedRoute = protectedRoutes.some((route) => pathname.startsWith(route));
+  const protectedRoutes = [
+    "/messages",
+    "/contacts",
+    "/blog",
+    "/profile",
+    "/notifications",
+    "/settings",
+  ];
+  const isProtectedRoute = protectedRoutes.some((route) =>
+    pathname.startsWith(route),
+  );
 
-  
-  if (!token && isProtectedRoute) {
-    const loginUrl = new URL("/login", request.url);
-    return NextResponse.redirect(loginUrl);
+  const isAdminRoute = pathname.startsWith("/admin");
+
+  // Not logged in -> redirect to login
+  if (!token && (isProtectedRoute || isAdminRoute)) {
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  
+  // Logged in but not admin -> redirect away from admin
+  if (token && isAdminRoute && role !== "admin") {
+    return NextResponse.redirect(new URL("/messages", request.url));
+  }
+
+  // Logged in visiting public route -> redirect
   if (token && isPublicRoute) {
-    const messagesUrl = new URL("/messages", request.url);
-    return NextResponse.redirect(messagesUrl);
+    const dest = role === "admin" ? "/admin" : "/messages";
+    return NextResponse.redirect(new URL(dest, request.url));
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder
-     */
-    "/((?!api|_next/static|_next/image|favicon.ico|.*\\..*|_next).*)",
-  ],
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|.*\\..*|_next).*)"],
 };

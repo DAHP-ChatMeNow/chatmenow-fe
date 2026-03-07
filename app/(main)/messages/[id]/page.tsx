@@ -16,6 +16,7 @@ import { useAuthStore } from "@/store/use-auth-store";
 import { useSocket } from "@/components/providers/socket-provider";
 import { useQueryClient } from "@tanstack/react-query";
 import { Message } from "@/types/message";
+import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 
 export default function ChatDetailPage() {
   const { id } = useParams();
@@ -168,11 +169,42 @@ export default function ChatDetailPage() {
                       (msg.senderId as { _id?: string; id?: string })?.id;
                 const isMe = messageSenderId === currentUserId;
 
+                const senderInfo =
+                  typeof msg.senderId === "object" && msg.senderId !== null
+                    ? (msg.senderId as {
+                        displayName?: string;
+                        avatar?: string;
+                        _id?: string;
+                        id?: string;
+                      })
+                    : undefined;
+
+                const senderDisplayName = isMe
+                  ? user?.displayName || "You"
+                  : senderInfo?.displayName ||
+                    (conversation?.type === "private"
+                      ? conversationName || "User"
+                      : "User");
+
+                const senderAvatarKey = isMe
+                  ? user?.avatar
+                  : senderInfo?.avatar ||
+                    (conversation?.type === "private"
+                      ? conversationAvatar
+                      : undefined);
+
                 return (
                   <div
                     key={msg.id}
-                    className={`flex ${isMe ? "justify-end" : "justify-start"}`}
+                    className={`flex items-end gap-2.5 ${isMe ? "justify-end" : "justify-start"}`}
                   >
+                    {!isMe && (
+                      <PresignedAvatar
+                        avatarKey={senderAvatarKey}
+                        displayName={senderDisplayName}
+                        className="w-8 h-8 shrink-0"
+                      />
+                    )}
                     <div
                       className={`px-4 py-2.5 rounded-2xl text-[14px] md:text-[15px] shadow-sm max-w-[85%] md:max-w-[70%] lg:max-w-[60%] ${
                         isMe
@@ -193,6 +225,13 @@ export default function ChatDetailPage() {
                         })}
                       </div>
                     </div>
+                    {isMe && (
+                      <PresignedAvatar
+                        avatarKey={senderAvatarKey}
+                        displayName={senderDisplayName}
+                        className="w-8 h-8 shrink-0"
+                      />
+                    )}
                   </div>
                 );
               })}

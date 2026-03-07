@@ -1,5 +1,11 @@
 "use client";
-import { MessageSquare, Users, LayoutDashboard, User } from "lucide-react";
+import {
+  MessageSquare,
+  Users,
+  LayoutDashboard,
+  User,
+  Settings,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -13,6 +19,7 @@ export function Sidebar({ mode = "desktop" }: { mode?: "desktop" | "mobile" }) {
     { icon: LayoutDashboard, path: "/blog", label: "Bài viết" },
     { icon: Users, path: "/contacts", label: "Bạn bè" },
     { icon: User, path: "/profile", label: "Cá nhân" },
+    { icon: Settings, path: "/settings", label: "Cài đặt" },
   ];
 
   const containerClasses =

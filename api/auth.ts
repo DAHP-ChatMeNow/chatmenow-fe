@@ -15,6 +15,7 @@ export type RegisterPayload = {
 export type AuthResponse = {
   user: User;
   token: string;
+  role?: string;
   message?: string;
 };
 

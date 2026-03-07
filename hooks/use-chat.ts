@@ -2,7 +2,12 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { chatService, ConversationsResponse, MessagesResponse, ConversationDetailsResponse } from "@/api/chat";
+import {
+  chatService,
+  ConversationsResponse,
+  MessagesResponse,
+  ConversationDetailsResponse,
+} from "@/api/chat";
 import { userService } from "@/api/user";
 import { Message } from "@/types/message";
 import { Conversation } from "@/types/conversation";
@@ -10,7 +15,8 @@ import { Conversation } from "@/types/conversation";
 export const useConversations = () => {
   return useQuery({
     queryKey: ["conversations"],
-    queryFn: (): Promise<ConversationsResponse> => chatService.getConversations(),
+    queryFn: (): Promise<ConversationsResponse> =>
+      chatService.getConversations(),
   });
 };
 
@@ -41,7 +47,9 @@ export const useCreateConversation = () => {
       toast.success("Tạo cuộc trò chuyện thành công");
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || "Không thể tạo cuộc trò chuyện");
+      toast.error(
+        error?.response?.data?.message || "Không thể tạo cuộc trò chuyện",
+      );
     },
   });
 };
@@ -52,9 +60,10 @@ export const useSendMessage = () => {
   return useMutation({
     mutationFn: chatService.sendMessage,
     onSuccess: (newMessage: Message) => {
-      queryClient.invalidateQueries({ queryKey: ["messages", newMessage.conversationId] });
+      queryClient.invalidateQueries({
+        queryKey: ["messages", newMessage.conversationId],
+      });
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
-      toast.success("Đã gửi tin nhắn");
     },
     onError: (error: any) => {
       toast.error(error?.response?.data?.message || "Không thể gửi tin nhắn");
@@ -66,28 +75,35 @@ export const useGetPrivateConversation = () => {
   return useMutation({
     mutationFn: chatService.getPrivateConversation,
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || "Không thể lấy cuộc trò chuyện");
+      toast.error(
+        error?.response?.data?.message || "Không thể lấy cuộc trò chuyện",
+      );
     },
   });
 };
 
 export const usePrivatePartner = (
   conversation: Conversation | undefined,
-  currentUserId: string | undefined
+  currentUserId: string | undefined,
 ) => {
   // Lấy partnerId từ members array
   const partnerId =
     conversation?.type === "private" && currentUserId
-      ? conversation.members.find(m => {
+      ? conversation.members.find((m) => {
           // Handle cả trường hợp userId là string hoặc object
-          const memberUserId = typeof m.userId === 'string' ? m.userId : (m.userId as any)?._id || (m.userId as any)?.id;
+          const memberUserId =
+            typeof m.userId === "string"
+              ? m.userId
+              : (m.userId as any)?._id || (m.userId as any)?.id;
           return memberUserId !== currentUserId;
         })?.userId
       : null;
 
   // Nếu partnerId là object, lấy _id hoặc id
   const partnerIdString = partnerId
-    ? (typeof partnerId === 'string' ? partnerId : (partnerId as any)._id || (partnerId as any).id)
+    ? typeof partnerId === "string"
+      ? partnerId
+      : (partnerId as any)._id || (partnerId as any).id
     : null;
 
   return useQuery({
@@ -105,7 +121,7 @@ export const usePrivatePartner = (
 
 export const useConversationDisplay = (
   conversation: Conversation | undefined,
-  currentUserId: string | undefined
+  currentUserId: string | undefined,
 ) => {
   const { data: partner } = usePrivatePartner(conversation, currentUserId);
 
@@ -119,9 +135,7 @@ export const useConversationDisplay = (
         ? partner?.avatar
         : conversation?.groupAvatar,
     isOnline:
-      conversation?.type === "private"
-        ? partner?.isOnline ?? false
-        : false,
+      conversation?.type === "private" ? (partner?.isOnline ?? false) : false,
   };
 };
 
@@ -129,15 +143,24 @@ export const useAddMemberToGroup = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ conversationId, memberIds }: { conversationId: string; memberIds: string[] }) =>
-      chatService.addMemberToGroup(conversationId, memberIds),
+    mutationFn: ({
+      conversationId,
+      memberIds,
+    }: {
+      conversationId: string;
+      memberIds: string[];
+    }) => chatService.addMemberToGroup(conversationId, memberIds),
     onSuccess: (_, { conversationId }) => {
-      queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
+      queryClient.invalidateQueries({
+        queryKey: ["conversation", conversationId],
+      });
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
       toast.success("Đã thêm thành viên vào nhóm");
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || "Không thể thêm thành viên");
+      toast.error(
+        error?.response?.data?.message || "Không thể thêm thành viên",
+      );
     },
   });
 };
@@ -146,10 +169,17 @@ export const useRemoveMemberFromGroup = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ conversationId, memberId }: { conversationId: string; memberId: string }) =>
-      chatService.removeMemberFromGroup(conversationId, memberId),
+    mutationFn: ({
+      conversationId,
+      memberId,
+    }: {
+      conversationId: string;
+      memberId: string;
+    }) => chatService.removeMemberFromGroup(conversationId, memberId),
     onSuccess: (_, { conversationId }) => {
-      queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
+      queryClient.invalidateQueries({
+        queryKey: ["conversation", conversationId],
+      });
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
       toast.success("Đã xóa thành viên");
     },
@@ -163,7 +193,8 @@ export const useDissolveGroup = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (conversationId: string) => chatService.dissolveGroup(conversationId),
+    mutationFn: (conversationId: string) =>
+      chatService.dissolveGroup(conversationId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
       toast.success("Đã giải tán nhóm");

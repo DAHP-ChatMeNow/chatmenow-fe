@@ -33,9 +33,13 @@ export const useLogin = () => {
   return useMutation<AuthResponse, unknown, LoginPayload>({
     mutationFn: authService.login,
     onSuccess: (data) => {
-      setAuth(data.user, data.token);
+      setAuth(data.user, data.token, data.role);
       toast.success(data.message ?? "Đăng nhập thành công");
-      router.push("/messages");
+      if (data.role === "admin") {
+        router.push("/admin");
+      } else {
+        router.push("/messages");
+      }
     },
     onError: (error) => {
       toast.error(getErrorMessage(error));
@@ -60,6 +64,7 @@ export const useRegister = () => {
 
 export const useMe = () => {
   const token = useAuthStore((state) => state.token);
+  const role = useAuthStore((state) => state.role);
   const setAuth = useAuthStore((state) => state.setAuth);
 
   const query = useQuery({
@@ -70,7 +75,7 @@ export const useMe = () => {
 
   useEffect(() => {
     if (query.isSuccess && query.data) {
-      setAuth(query.data, token!);
+      setAuth(query.data, token!, role ?? undefined);
     }
   }, [query.isSuccess, query.data]);
 

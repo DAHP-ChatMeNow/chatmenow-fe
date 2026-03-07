@@ -5,14 +5,15 @@ import { User } from "@/types/user";
 
 export type CreatePostPayload = {
   content: string;
-  media?: Array<{ url: string; type: string; duration?: number }>;
   privacy?: "public" | "friends" | "private";
+  mediaFiles?: File[];
+  videoDurations?: number[];
 };
 
 interface BackendPost {
   id: string;
   _id: string;
-  authorId: User; 
+  authorId: User;
   content: string;
   privacy: string;
   media?: Array<{ url: string; type: string; duration?: number }>;
@@ -37,7 +38,7 @@ const mapComment = (c: BackendComment): Comment => ({
   id: c._id,
   _id: c._id,
   postId: c.postId,
-  userId: typeof c.userId === "string" ? c.userId : (c.userId?._id || ""),
+  userId: typeof c.userId === "string" ? c.userId : c.userId?._id || "",
   user: typeof c.userId === "string" ? undefined : (c.userId as User),
   content: c.content,
   createdAt: c.createdAt,
@@ -45,19 +46,25 @@ const mapComment = (c: BackendComment): Comment => ({
 });
 
 const getFeed = async ({ pageParam = 1 }: { pageParam?: number }) => {
-  const { data } = await api.get<{ success: boolean; posts: BackendPost[]; total: number; page: number; limit: number }>("/posts/feed", { 
-    params: { 
-      page: pageParam, 
-      limit: 10 
-    } 
+  const { data } = await api.get<{
+    success: boolean;
+    posts: BackendPost[];
+    total: number;
+    page: number;
+    limit: number;
+  }>("/posts/feed", {
+    params: {
+      page: pageParam,
+      limit: 10,
+    },
   });
-  
+
   const posts: Post[] = data.posts.map((post) => ({
     id: post._id,
     _id: post._id,
     // authorId is populated from backend, so it's an object
     authorId: (post.authorId as any)?._id || post.authorId,
-    author: post.authorId as User, 
+    author: post.authorId as User,
     content: post.content,
     privacy: post.privacy,
     media: post.media,
@@ -68,17 +75,32 @@ const getFeed = async ({ pageParam = 1 }: { pageParam?: number }) => {
     createdAt: post.createdAt,
     updatedAt: post.updatedAt,
   }));
-  
+
   return {
     posts,
-    hasMore: data.posts.length === 10, 
+    hasMore: data.posts.length === 10,
     nextPage: pageParam + 1,
   };
 };
 
 const createPost = async (payload: CreatePostPayload) => {
-  const { data } = await api.post<BackendPost>("/posts", payload);
-  
+  const formData = new FormData();
+  formData.append("content", payload.content);
+  formData.append("privacy", payload.privacy || "public");
+
+  if (payload.mediaFiles && payload.mediaFiles.length > 0) {
+    payload.mediaFiles.forEach((file) => formData.append("media", file));
+    if (payload.videoDurations && payload.videoDurations.length > 0) {
+      payload.videoDurations.forEach((d) =>
+        formData.append("videoDurations[]", String(d)),
+      );
+    }
+  }
+
+  const { data } = await api.post<BackendPost>("/posts", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+
   // Backend populates authorId, so it's an object
   const post: Post = {
     id: data._id,
@@ -95,7 +117,7 @@ const createPost = async (payload: CreatePostPayload) => {
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
   };
-  
+
   return post;
 };
 
@@ -110,13 +132,58 @@ const unlikePost = async (postId: string) => {
 };
 
 const getComments = async (postId: string) => {
-  const { data } = await api.get<{ success: boolean; comments: BackendComment[] }>(`/posts/${postId}/comments`);
+  const { data } = await api.get<{
+    success: boolean;
+    comments: BackendComment[];
+  }>(`/posts/${postId}/comments`);
   return data.comments.map(mapComment);
 };
 
 const addComment = async (postId: string, content: string) => {
-  const { data } = await api.post<BackendComment>(`/posts/${postId}/comments`, { content });
+  const { data } = await api.post<BackendComment>(`/posts/${postId}/comments`, {
+    content,
+  });
   return mapComment(data);
 };
 
-export const postService = { getFeed, createPost, likePost, unlikePost, getComments, addComment };
+const getMyPosts = async ({ pageParam = 1 }: { pageParam?: number }) => {
+  const { data } = await api.get<{
+    success: boolean;
+    posts: BackendPost[];
+    total: number;
+    page: number;
+    limit: number;
+  }>("/posts/me", { params: { page: pageParam, limit: 12 } });
+
+  const posts: Post[] = data.posts.map((post) => ({
+    id: post._id,
+    _id: post._id,
+    authorId: (post.authorId as any)?._id || post.authorId,
+    author: post.authorId as User,
+    content: post.content,
+    privacy: post.privacy,
+    media: post.media,
+    likesCount: post.likesCount || 0,
+    commentsCount: post.commentsCount || 0,
+    trendingScore: post.trendingScore || 0,
+    isLikedByCurrentUser: post.isLikedByCurrentUser || false,
+    createdAt: post.createdAt,
+    updatedAt: post.updatedAt,
+  }));
+
+  return {
+    posts,
+    hasMore: data.posts.length === 12,
+    nextPage: pageParam + 1,
+  };
+};
+
+export const postService = {
+  getFeed,
+  createPost,
+  likePost,
+  unlikePost,
+  getComments,
+  addComment,
+  getMyPosts,
+};
