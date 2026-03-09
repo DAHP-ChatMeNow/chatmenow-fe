@@ -156,23 +156,23 @@ export default function ProfilePage() {
   if (!user) return null;
 
   return (
-    <div className="flex flex-col h-full bg-slate-50/50 dark:bg-slate-900 w-full">
+    <div className="flex flex-col w-full h-full bg-slate-50/50 dark:bg-slate-900">
       <ScrollArea className="flex-1 w-full">
-        <div className="max-w-3xl mx-auto py-0 md:py-6 px-0 md:px-6 space-y-4 pb-8">
+        <div className="max-w-3xl px-0 py-0 pb-8 mx-auto space-y-4 md:py-6 md:px-6">
           {/* === FB-style Profile Header Card === */}
-          <div className="bg-white dark:bg-slate-800 rounded-none md:rounded-2xl border-0 md:border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
+          <div className="overflow-hidden bg-white border-0 rounded-none shadow-sm dark:bg-slate-800 md:rounded-2xl md:border border-slate-100 dark:border-slate-700">
             {/* Cover Photo */}
-            <div className="h-36 md:h-48 bg-gradient-to-br from-blue-400 via-blue-500 to-purple-600 relative" />
+            <div className="relative h-36 md:h-48 bg-gradient-to-br from-blue-400 via-blue-500 to-purple-600" />
 
             {/* Avatar + Info */}
-            <div className="px-4 md:px-6 pb-4">
+            <div className="px-4 pb-4 md:px-6">
               {/* Avatar row */}
-              <div className="flex items-end justify-between -mt-12 md:-mt-16 mb-3">
+              <div className="flex items-end justify-between mb-3 -mt-12 md:-mt-16">
                 <div className="relative">
                   {previewAvatar ? (
-                    <Avatar className="h-24 w-24 md:h-32 md:w-32 border-4 border-white dark:border-slate-800 shadow-lg">
+                    <Avatar className="w-24 h-24 border-4 border-white shadow-lg md:h-32 md:w-32 dark:border-slate-800">
                       <AvatarImage src={previewAvatar} alt={user.displayName} />
-                      <AvatarFallback className="text-3xl font-bold bg-gradient-to-br from-blue-500 to-purple-500 text-white">
+                      <AvatarFallback className="text-3xl font-bold text-white bg-gradient-to-br from-blue-500 to-purple-500">
                         {user.displayName?.charAt(0).toUpperCase() || "U"}
                       </AvatarFallback>
                     </Avatar>
@@ -180,32 +180,32 @@ export default function ProfilePage() {
                     <PresignedAvatar
                       avatarKey={user.avatar}
                       displayName={user.displayName}
-                      className="h-24 w-24 md:h-32 md:w-32 border-4 border-white dark:border-slate-800 shadow-lg"
+                      className="w-24 h-24 border-4 border-white shadow-lg md:h-32 md:w-32 dark:border-slate-800"
                       fallbackClassName="text-3xl font-bold"
                     />
                   )}
                   {/* Camera Button */}
                   {isUploadingAvatar || isDeletingAvatar ? (
-                    <div className="absolute bottom-1 right-1 bg-blue-500 p-2 rounded-full shadow-lg">
-                      <Loader className="text-white w-4 h-4 animate-spin" />
+                    <div className="absolute p-2 bg-blue-500 rounded-full shadow-lg bottom-1 right-1">
+                      <Loader className="w-4 h-4 text-white animate-spin" />
                     </div>
                   ) : (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
-                          className="absolute bottom-1 right-1 bg-white dark:bg-slate-700 hover:bg-gray-100 p-2 rounded-full shadow-lg border-2 border-slate-200 dark:border-slate-600 transition-all hover:scale-105"
+                          className="absolute p-2 transition-all bg-white border-2 rounded-full shadow-lg bottom-1 right-1 dark:bg-slate-700 hover:bg-gray-100 border-slate-200 dark:border-slate-600 hover:scale-105"
                           aria-label="Chỉnh sửa ảnh đại diện"
                         >
-                          <Camera className="text-slate-700 dark:text-slate-200 w-4 h-4" />
+                          <Camera className="w-4 h-4 text-slate-700 dark:text-slate-200" />
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent
                         align="end"
-                        className="w-52 bg-white dark:bg-slate-800"
+                        className="bg-white w-52 dark:bg-slate-800"
                       >
                         <DropdownMenuItem
                           onClick={handleAvatarClick}
-                          className="cursor-pointer gap-3"
+                          className="gap-3 cursor-pointer"
                         >
                           <Upload className="w-4 h-4 text-blue-600" />
                           <span className="font-medium">Tải ảnh lên</span>
@@ -216,7 +216,7 @@ export default function ProfilePage() {
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 onClick={handleDeleteAvatar}
-                                className="cursor-pointer gap-3 text-red-600 focus:text-red-600 focus:bg-red-50"
+                                className="gap-3 text-red-600 cursor-pointer focus:text-red-600 focus:bg-red-50"
                               >
                                 <Trash2 className="w-4 h-4" />
                                 <span className="font-medium">Xóa ảnh</span>
@@ -239,27 +239,27 @@ export default function ProfilePage() {
                 {/* Edit button top-right */}
                 <Button
                   onClick={() => setShowEditDialog(true)}
-                  className="mb-1 px-5 py-2 rounded-lg text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                  className="px-5 py-2 mb-1 text-sm font-semibold text-white bg-blue-600 rounded-lg shadow-sm hover:bg-blue-700"
                 >
                   {t.editProfile}
                 </Button>
               </div>
 
               {/* Name + bio */}
-              <h2 className="text-xl md:text-2xl font-bold text-slate-900 dark:text-white leading-tight">
+              <h2 className="text-xl font-bold leading-tight md:text-2xl text-slate-900 dark:text-white">
                 {user.displayName || "User"}
               </h2>
               {user.bio && (
-                <p className="text-slate-500 dark:text-slate-400 text-sm mt-1 max-w-lg">
+                <p className="max-w-lg mt-1 text-sm text-slate-500 dark:text-slate-400">
                   {user.bio}
                 </p>
               )}
-              <p className="text-slate-400 text-xs mt-1">
+              <p className="mt-1 text-xs text-slate-400">
                 @{user.id?.slice(0, 8)}
               </p>
 
               {/* stats row */}
-              <div className="flex gap-5 mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">
+              <div className="flex gap-5 pt-3 mt-3 border-t border-slate-100 dark:border-slate-700">
                 <div className="text-center">
                   <p className="text-base font-bold text-slate-900 dark:text-white">
                     {allPosts.length}
@@ -273,14 +273,14 @@ export default function ProfilePage() {
           </div>
 
           {/* === Posts Feed === */}
-          <div className="px-0 md:px-0 space-y-4">
+          <div className="px-0 space-y-4 md:px-0">
             {isLoadingPosts ? (
               <>
                 <BlogSkeleton />
                 <BlogSkeleton />
               </>
             ) : allPosts.length === 0 ? (
-              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm p-12 flex flex-col items-center gap-3 text-slate-400 mx-4 md:mx-0">
+              <div className="flex flex-col items-center gap-3 p-12 mx-4 bg-white border shadow-sm dark:bg-slate-800 rounded-2xl border-slate-100 dark:border-slate-700 text-slate-400 md:mx-0">
                 <MessageCircle className="w-10 h-10 opacity-30" />
                 <p className="text-sm font-medium">
                   {language === "vi" ? "Chưa có bài viết nào" : "No posts yet"}
@@ -320,7 +320,7 @@ export default function ProfilePage() {
                 {hasNextPage && !isFetchingNextPage && (
                   <button
                     onClick={() => fetchNextPage()}
-                    className="w-full py-3 text-sm font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors mx-4 md:mx-0"
+                    className="w-full py-3 mx-4 text-sm font-semibold text-blue-600 transition-colors dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl md:mx-0"
                   >
                     {language === "vi" ? "Xem thêm" : "Load more"}
                   </button>
@@ -407,20 +407,20 @@ export default function ProfilePage() {
 
       {/* Delete Avatar Confirmation Dialog - Facebook Style */}
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <DialogContent className="max-w-md bg-white dark:bg-slate-800 p-0 gap-0 rounded-2xl shadow-2xl border-0">
+        <DialogContent className="max-w-md gap-0 p-0 bg-white border-0 shadow-2xl dark:bg-slate-800 rounded-2xl">
           {/* Header with Icon */}
           <div className="px-6 pt-6 pb-4 space-y-3">
             <div className="flex justify-center">
-              <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+              <div className="flex items-center justify-center w-16 h-16 bg-red-100 rounded-full dark:bg-red-900/30">
                 <Trash2 className="w-8 h-8 text-red-600 dark:text-red-400" />
               </div>
             </div>
             <DialogHeader>
-              <DialogTitle className="text-xl font-bold text-slate-900 dark:text-white text-center">
+              <DialogTitle className="text-xl font-bold text-center text-slate-900 dark:text-white">
                 Xóa ảnh đại diện?
               </DialogTitle>
             </DialogHeader>
-            <p className="text-center text-sm text-slate-600 dark:text-slate-400 leading-relaxed px-2">
+            <p className="px-2 text-sm leading-relaxed text-center text-slate-600 dark:text-slate-400">
               Bạn có chắc muốn xóa ảnh đại diện của mình không? Ảnh sẽ được thay
               thế bằng avatar mặc định.
             </p>
@@ -430,19 +430,19 @@ export default function ProfilePage() {
           <div className="h-px bg-slate-200 dark:bg-slate-700"></div>
 
           {/* Buttons */}
-          <div className="p-4 flex gap-3">
+          <div className="flex gap-3 p-4">
             <Button
               variant="outline"
               onClick={() => setShowDeleteConfirm(false)}
               disabled={isDeletingAvatar}
-              className="flex-1 h-11 border-2 border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 font-semibold rounded-xl transition-all"
+              className="flex-1 font-semibold transition-all bg-white border-2 h-11 border-slate-200 dark:border-slate-600 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl"
             >
               Hủy
             </Button>
             <Button
               onClick={confirmDeleteAvatar}
               disabled={isDeletingAvatar}
-              className="flex-1 h-11 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-all shadow-lg shadow-red-600/25 hover:shadow-red-600/40"
+              className="flex-1 font-semibold text-white transition-all bg-red-600 shadow-lg h-11 hover:bg-red-700 rounded-xl shadow-red-600/25 hover:shadow-red-600/40"
             >
               {isDeletingAvatar ? (
                 <>
@@ -536,12 +536,12 @@ function PostMediaGrid({ media }: { media: PostMedia[] }) {
       {media.slice(2, 5).map((m, i) => (
         <div
           key={m.url}
-          className="col-span-1 row-span-1 relative overflow-hidden"
+          className="relative col-span-1 row-span-1 overflow-hidden"
         >
           {mediaEl(m)}
           {i === 2 && remaining > 0 && (
-            <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-              <span className="text-white text-2xl font-bold">
+            <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+              <span className="text-2xl font-bold text-white">
                 +{remaining}
               </span>
             </div>
@@ -579,20 +579,20 @@ function ProfilePostCard({
   isAddingComment,
 }: ProfilePostCardProps) {
   const { data: commentsData } = useComments(isExpanded ? post.id : "");
-  const comments = commentsData?.comments || [];
+  const comments = commentsData || [];
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-none md:rounded-2xl border-0 md:border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
+    <div className="overflow-hidden bg-white border-0 rounded-none shadow-sm dark:bg-slate-800 md:rounded-2xl md:border border-slate-100 dark:border-slate-700">
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
         <div className="flex items-center gap-3">
           <PresignedAvatar
             avatarKey={post.author?.avatar}
             displayName={post.author?.displayName}
-            className="h-10 w-10"
+            className="w-10 h-10"
           />
           <div>
-            <p className="font-semibold text-slate-900 dark:text-white text-sm leading-tight">
+            <p className="text-sm font-semibold leading-tight text-slate-900 dark:text-white">
               {post.author?.displayName || "User"}
             </p>
             <p className="text-[11px] text-slate-400">
@@ -606,14 +606,14 @@ function ProfilePostCard({
             </p>
           </div>
         </div>
-        <button className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+        <button className="p-2 transition-colors rounded-full hover:bg-slate-100 dark:hover:bg-slate-700">
           <MoreHorizontal className="w-5 h-5 text-slate-500" />
         </button>
       </div>
 
       {/* Content */}
       {post.content && (
-        <p className="px-4 pb-3 text-slate-800 dark:text-slate-200 text-sm leading-relaxed whitespace-pre-wrap">
+        <p className="px-4 pb-3 text-sm leading-relaxed whitespace-pre-wrap text-slate-800 dark:text-slate-200">
           {post.content}
         </p>
       )}
@@ -628,11 +628,11 @@ function ProfilePostCard({
       {/* Stats */}
       <div className="flex items-center justify-between px-4 pt-3 pb-1">
         <span className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-          <Heart className="w-4 h-4 fill-red-400 text-red-400" />
+          <Heart className="w-4 h-4 text-red-400 fill-red-400" />
           {post.likesCount ?? 0}
         </span>
         <span
-          className="text-sm text-slate-500 dark:text-slate-400 cursor-pointer hover:underline"
+          className="text-sm cursor-pointer text-slate-500 dark:text-slate-400 hover:underline"
           onClick={onToggleExpand}
         >
           {post.commentsCount ?? 0} bình luận
@@ -640,7 +640,7 @@ function ProfilePostCard({
       </div>
 
       {/* Action bar */}
-      <div className="flex border-t border-slate-100 dark:border-slate-700 mx-0 mt-1">
+      <div className="flex mx-0 mt-1 border-t border-slate-100 dark:border-slate-700">
         <button
           onClick={onLike}
           className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold rounded-none hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors ${
@@ -669,18 +669,18 @@ function ProfilePostCard({
 
       {/* Comments section */}
       {isExpanded && (
-        <div className="px-4 pb-4 pt-2 space-y-3 border-t border-slate-100 dark:border-slate-700">
+        <div className="px-4 pt-2 pb-4 space-y-3 border-t border-slate-100 dark:border-slate-700">
           {/* Existing comments */}
           {comments.map((c) => (
-            <div key={c.id} className="flex gap-2 items-start">
+            <div key={c.id} className="flex items-start gap-2">
               <PresignedAvatar
-                avatarKey={c.author?.avatar}
-                displayName={c.author?.displayName}
-                className="h-8 w-8 flex-shrink-0"
+                avatarKey={c.user?.avatar}
+                displayName={c.user?.displayName}
+                className="flex-shrink-0 w-8 h-8"
               />
-              <div className="bg-slate-100 dark:bg-slate-700 rounded-2xl px-3 py-2 flex-1">
+              <div className="flex-1 px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded-2xl">
                 <p className="text-xs font-semibold text-slate-900 dark:text-white">
-                  {c.author?.displayName}
+                  {c.user?.displayName}
                 </p>
                 <p className="text-sm text-slate-700 dark:text-slate-300">
                   {c.content}
@@ -690,11 +690,11 @@ function ProfilePostCard({
           ))}
 
           {/* Input */}
-          <div className="flex gap-2 items-center pt-1">
+          <div className="flex items-center gap-2 pt-1">
             <PresignedAvatar
               avatarKey={currentUserAvatar}
               displayName={currentUserDisplayName}
-              className="h-8 w-8 flex-shrink-0"
+              className="flex-shrink-0 w-8 h-8"
             />
             <div className="flex-1 flex gap-2 items-center bg-slate-100 dark:bg-slate-700 rounded-full px-4 py-1.5">
               <Input
@@ -702,12 +702,12 @@ function ProfilePostCard({
                 onChange={(e) => onCommentInputChange(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && onAddComment()}
                 placeholder="Viết bình luận..."
-                className="border-0 bg-transparent p-0 text-sm focus-visible:ring-0 dark:text-white placeholder:text-slate-400"
+                className="p-0 text-sm bg-transparent border-0 focus-visible:ring-0 dark:text-white placeholder:text-slate-400"
               />
               <button
                 onClick={onAddComment}
                 disabled={isAddingComment || !commentInput.trim()}
-                className="text-blue-600 hover:text-blue-700 disabled:opacity-40 flex-shrink-0"
+                className="flex-shrink-0 text-blue-600 hover:text-blue-700 disabled:opacity-40"
               >
                 {isAddingComment ? (
                   <Loader2 className="w-4 h-4 animate-spin" />

@@ -54,35 +54,38 @@ export default function ChatDetailPage() {
   }, [messages]);
 
   useEffect(() => {
-    if (!socket || !conversationId) return;
+    if (!socket.current || !conversationId) return;
 
-    socket.emit("joinConversation", conversationId);
+    socket.current.emit("joinConversation", conversationId);
 
     const handleNewMessage = (newMessage: Message) => {
-      queryClient.setQueryData(["messages", conversationId], (oldData: { messages: Message[] } | undefined) => {
-        if (!oldData) return { messages: [newMessage] };
-        const exists = oldData.messages.some(
-          (msg: Message) => msg.id === newMessage.id,
-        );
-        if (exists) return oldData;
-        return {
-          messages: [...oldData.messages, newMessage],
-        };
-      });
+      queryClient.setQueryData(
+        ["messages", conversationId],
+        (oldData: { messages: Message[] } | undefined) => {
+          if (!oldData) return { messages: [newMessage] };
+          const exists = oldData.messages.some(
+            (msg: Message) => msg.id === newMessage.id,
+          );
+          if (exists) return oldData;
+          return {
+            messages: [...oldData.messages, newMessage],
+          };
+        },
+      );
 
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
     };
 
-    socket.on("newMessage", handleNewMessage);
+    socket.current.on("newMessage", handleNewMessage);
 
     return () => {
-      socket.off("newMessage", handleNewMessage);
-      socket.emit("leaveConversation", conversationId);
+      socket.current?.off("newMessage", handleNewMessage);
+      socket.current?.emit("leaveConversation", conversationId);
     };
-  }, [socket, conversationId, queryClient]);
+  }, [isConnected, conversationId, queryClient]);
 
   useEffect(() => {
-    if (!socket || !conversationId) return;
+    if (!socket.current || !conversationId) return;
 
     const handleUserTyping = ({
       userId,
@@ -103,14 +106,14 @@ export default function ChatDetailPage() {
       setTypingUsers((prev) => prev.filter((name) => name !== userId));
     };
 
-    socket.on("userTyping", handleUserTyping);
-    socket.on("userStopTyping", handleUserStopTyping);
+    socket.current.on("userTyping", handleUserTyping);
+    socket.current.on("userStopTyping", handleUserStopTyping);
 
     return () => {
-      socket.off("userTyping", handleUserTyping);
-      socket.off("userStopTyping", handleUserStopTyping);
+      socket.current?.off("userTyping", handleUserTyping);
+      socket.current?.off("userStopTyping", handleUserStopTyping);
     };
-  }, [socket, conversationId, user]);
+  }, [isConnected, conversationId, user]);
 
   const handleSendMessage = (text: string) => {
     if (!text.trim() || isPending) return;
@@ -123,8 +126,8 @@ export default function ChatDetailPage() {
   };
 
   const handleTyping = () => {
-    if (socket && conversationId) {
-      socket.emit("typing", {
+    if (socket.current && conversationId) {
+      socket.current.emit("typing", {
         conversationId,
         userId: user?.id,
         displayName: user?.displayName,
@@ -133,8 +136,8 @@ export default function ChatDetailPage() {
   };
 
   const handleStopTyping = () => {
-    if (socket && conversationId) {
-      socket.emit("stopTyping", { conversationId, userId: user?.id });
+    if (socket.current && conversationId) {
+      socket.current.emit("stopTyping", { conversationId, userId: user?.id });
     }
   };
 

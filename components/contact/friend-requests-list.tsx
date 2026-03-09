@@ -29,7 +29,6 @@ function FriendRequestItem({
   onReject: (id: string) => void;
 }) {
   const requestId = request._id || request.id;
-  if (!requestId) return null;
 
   // Get sender ID from senderId field (which is populated as an object)
   const senderObj =
@@ -45,6 +44,8 @@ function FriendRequestItem({
   // Only fetch email, sender info is already populated
   const { data: emailData } = useGetUserEmailById(senderId || "");
 
+  if (!requestId) return null;
+
   const displayName = senderObj?.displayName || "Unknown";
   const avatar = senderObj?.avatar;
   const email = emailData?.email;
@@ -52,15 +53,15 @@ function FriendRequestItem({
   const isProcessing = processingIds.includes(requestId);
 
   return (
-    <div className="flex items-center gap-4 p-4 rounded-xl border border-slate-100 hover:bg-slate-50">
+    <div className="flex items-center gap-4 p-4 border rounded-xl border-slate-100 hover:bg-slate-50">
       <PresignedAvatar
         avatarKey={avatar}
         displayName={displayName}
-        className="h-12 w-12"
+        className="w-12 h-12"
       />
 
       <div className="flex-1">
-        <p className="font-semibold text-sm">{displayName}</p>
+        <p className="text-sm font-semibold">{displayName}</p>
         {email && <p className="text-xs text-slate-400">{email}</p>}
       </div>
 

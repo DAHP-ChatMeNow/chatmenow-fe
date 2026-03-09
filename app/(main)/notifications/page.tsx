@@ -12,7 +12,7 @@ import {
   useAcceptFriendRequest as useAcceptFriendRequestContact,
   useRejectFriendRequest as useRejectFriendRequestContact,
 } from "@/hooks/use-contact";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 const getNotificationIcon = (type: string) => {
   switch (type) {
@@ -48,12 +48,6 @@ export default function NotificationsPage() {
   const { mutate: rejectFriendRequest } = useRejectFriendRequestContact();
   const [acceptingIds, setAcceptingIds] = useState<string[]>([]);
   const [rejectingIds, setRejectingIds] = useState<string[]>([]);
-  const [isMounted, setIsMounted] = useState(false);
-
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
   const notifications = notificationsData?.notifications || [];
   // Only show unread notifications
   const unreadNotifications = notifications.filter((noti) => !noti.isRead);
@@ -89,11 +83,6 @@ export default function NotificationsPage() {
   };
 
   const formatTime = (date: Date) => {
-    if (!isMounted) {
-      // Return static placeholder during SSR to avoid hydration mismatch
-      return "";
-    }
-
     const now = new Date();
     const diffMs = now.getTime() - new Date(date).getTime();
     const diffMins = Math.floor(diffMs / 60000);
@@ -107,13 +96,13 @@ export default function NotificationsPage() {
     return new Date(date).toLocaleDateString("vi-VN");
   };
   return (
-    <div className="flex flex-col h-full bg-white w-full">
+    <div className="flex flex-col w-full h-full bg-white">
       <header className="h-[70px] border-b border-slate-100 flex items-center justify-between px-6 sticky top-0 bg-white z-10 w-full">
         <h1 className="text-xl font-bold text-slate-900">Thông báo</h1>
         <Button
           variant="ghost"
           size="sm"
-          className="text-blue-600 font-medium"
+          className="font-medium text-blue-600"
           onClick={() => markAllAsRead()}
           disabled={isMarkingAll || notifications.length === 0}
         >
@@ -122,13 +111,13 @@ export default function NotificationsPage() {
       </header>
 
       <ScrollArea className="flex-1 w-full">
-        <div className="w-full p-4 md:p-8 space-y-2">
+        <div className="w-full p-4 space-y-2 md:p-8">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader className="w-6 h-6 animate-spin text-slate-400" />
             </div>
           ) : error ? (
-            <div className="text-center py-12 text-slate-500">
+            <div className="py-12 text-center text-slate-500">
               Không thể tải thông báo
             </div>
           ) : notifications.length > 0 ? (
@@ -139,11 +128,11 @@ export default function NotificationsPage() {
                   className={`flex items-start gap-4 p-4 rounded-2xl transition-all cursor-pointer ${noti.isRead ? "hover:bg-slate-50" : "bg-blue-50/40 border border-blue-100 shadow-sm"}`}
                 >
                   <div className="relative">
-                    <Avatar className="h-12 w-12 border border-white shadow-sm">
-                      <AvatarFallback className="bg-slate-100 font-bold">
+                    <Avatar className="w-12 h-12 border border-white shadow-sm">
+                      <AvatarFallback className="font-bold bg-slate-100">
                         {typeof noti.senderId === "string"
                           ? noti.senderId.charAt(0).toUpperCase()
-                          : (noti.senderId as any)?.name
+                          : noti.senderId?.displayName
                               ?.charAt(0)
                               .toUpperCase() || "N"}
                       </AvatarFallback>
@@ -166,7 +155,7 @@ export default function NotificationsPage() {
                       <div className="flex gap-2 mt-3">
                         <Button
                           size="sm"
-                          className="bg-blue-600 hover:bg-blue-700 h-8 px-4 rounded-lg"
+                          className="h-8 px-4 bg-blue-600 rounded-lg hover:bg-blue-700"
                           onClick={() =>
                             handleAcceptFriendRequest(
                               noti.id,
@@ -208,12 +197,12 @@ export default function NotificationsPage() {
                 </div>
               ))
             ) : (
-              <div className="text-center py-12 text-slate-500">
+              <div className="py-12 text-center text-slate-500">
                 Bạn đã đọc tất cả thông báo
               </div>
             )
           ) : (
-            <div className="text-center py-12 text-slate-500">
+            <div className="py-12 text-center text-slate-500">
               Bạn không có thông báo nào
             </div>
           )}

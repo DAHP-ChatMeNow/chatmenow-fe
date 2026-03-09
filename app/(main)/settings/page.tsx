@@ -98,7 +98,7 @@ export default function SettingsPage() {
   const [confirmPw, setConfirmPw] = useState("");
   const [isChangingPw, setIsChangingPw] = useState(false);
 
-  const [phone, setPhone] = useState((user as any)?.phone || "");
+  const [phone, setPhone] = useState(user?.phone || "");
   const [isSavingPhone, setIsSavingPhone] = useState(false);
 
   const handleLogout = () => {
@@ -187,7 +187,7 @@ export default function SettingsPage() {
               iconBg="bg-green-50 dark:bg-green-900/20"
               iconColor="text-green-500"
               label="Số điện thoại"
-              description={(user as any)?.phone || "Chưa thêm số điện thoại"}
+              description={user?.phone || "Chưa thêm số điện thoại"}
               onClick={() => setShowPhoneDialog(true)}
             />
             <SettingItem

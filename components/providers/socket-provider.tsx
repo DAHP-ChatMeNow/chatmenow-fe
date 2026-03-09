@@ -4,7 +4,9 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
+  RefObject,
   ReactNode,
 } from "react";
 import { io, Socket } from "socket.io-client";
@@ -68,12 +70,12 @@ interface FriendRemovedEvent {
 }
 
 interface SocketContextType {
-  socket: Socket | null;
+  socket: RefObject<Socket | null>;
   isConnected: boolean;
 }
 
 const SocketContext = createContext<SocketContextType>({
-  socket: null,
+  socket: { current: null },
   isConnected: false,
 });
 
@@ -90,7 +92,7 @@ interface SocketProviderProps {
 }
 
 export function SocketProvider({ children }: SocketProviderProps) {
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const socketRef = useRef<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const token = useAuthStore((state) => state.token);
   const user = useAuthStore((state) => state.user);
@@ -98,11 +100,6 @@ export function SocketProvider({ children }: SocketProviderProps) {
 
   useEffect(() => {
     if (!token || !user?._id) {
-      if (socket) {
-        socket.disconnect();
-        setSocket(null);
-        setIsConnected(false);
-      }
       return;
     }
 
@@ -162,7 +159,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
 
     socketInstance.on(
       "friend_request_removed",
-      (data: FriendRequestRemovedEvent) => {
+      (_data: FriendRequestRemovedEvent) => {
         queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
         toast.success("Đã từ chối lời mời kết bạn");
       },
@@ -176,7 +173,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
       );
     });
 
-    socketInstance.on("friend_removed", (data: FriendRemovedEvent) => {
+    socketInstance.on("friend_removed", (_data: FriendRemovedEvent) => {
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       toast.info("Một người bạn đã xóa bạn khỏi danh sách");
     });
@@ -199,7 +196,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
       queryClient.invalidateQueries({ queryKey: ["feed"] });
     });
 
-    setSocket(socketInstance);
+    socketRef.current = socketInstance;
 
     return () => {
       socketInstance.off("connected");
@@ -213,11 +210,13 @@ export function SocketProvider({ children }: SocketProviderProps) {
       socketInstance.off("post:liked");
       socketInstance.offAny();
       socketInstance.disconnect();
+      socketRef.current = null;
+      setIsConnected(false);
     };
   }, [token, user, queryClient]);
 
   return (
-    <SocketContext.Provider value={{ socket, isConnected }}>
+    <SocketContext.Provider value={{ socket: socketRef, isConnected }}>
       {children}
     </SocketContext.Provider>
   );
