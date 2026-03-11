@@ -18,7 +18,6 @@ import { Notification } from "@/types/notification";
 
 const SOCKET_URL = BASE_SOCKET_URL;
 
-// ✅ Socket event interfaces
 interface FriendRequestReceivedEvent {
   requestId: string;
   sender: {
