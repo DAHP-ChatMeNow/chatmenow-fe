@@ -25,15 +25,18 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal } from "lucide-react";
 
+const LIMIT_OPTIONS = [5, 10, 20];
+
 export default function AdminUsersPage() {
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
 
   const { data, isLoading } = useQuery({
-    queryKey: ["admin", "users", page, search],
-    queryFn: () => adminService.getUsers(page, 20, search),
+    queryKey: ["admin", "users", page, limit, search],
+    queryFn: () => adminService.getUsers(page, limit, search),
   });
 
   const { mutate: toggleActive, isPending: isToggling } = useMutation({
@@ -65,20 +68,20 @@ export default function AdminUsersPage() {
   const totalPages = data?.totalPages || 1;
 
   return (
-    <div className="p-6 md:p-8 space-y-6">
+    <div className="p-6 space-y-6 md:p-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
             Quản lý người dùng
           </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             {data?.total ?? 0} người dùng
           </p>
         </div>
         <form onSubmit={handleSearch} className="flex gap-2">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Search className="absolute w-4 h-4 -translate-y-1/2 left-3 top-1/2 text-slate-400" />
             <Input
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
@@ -86,14 +89,18 @@ export default function AdminUsersPage() {
               className="pl-9 w-60 dark:bg-slate-800 dark:border-slate-600 dark:text-white"
             />
           </div>
-          <Button type="submit" size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
+          <Button
+            type="submit"
+            size="sm"
+            className="text-white bg-blue-600 hover:bg-blue-700"
+          >
             Tìm
           </Button>
         </form>
       </div>
 
       {/* Table */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+      <div className="overflow-hidden bg-white border shadow-sm dark:bg-slate-800 rounded-2xl border-slate-200 dark:border-slate-700">
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
@@ -106,19 +113,19 @@ export default function AdminUsersPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
-                <th className="text-left px-5 py-3 font-semibold text-slate-500 dark:text-slate-400">
+                <th className="px-5 py-3 font-semibold text-left text-slate-500 dark:text-slate-400">
                   Người dùng
                 </th>
-                <th className="text-left px-5 py-3 font-semibold text-slate-500 dark:text-slate-400 hidden md:table-cell">
+                <th className="hidden px-5 py-3 font-semibold text-left text-slate-500 dark:text-slate-400 md:table-cell">
                   Email
                 </th>
-                <th className="text-left px-5 py-3 font-semibold text-slate-500 dark:text-slate-400">
+                <th className="px-5 py-3 font-semibold text-left text-slate-500 dark:text-slate-400">
                   Role
                 </th>
-                <th className="text-left px-5 py-3 font-semibold text-slate-500 dark:text-slate-400">
+                <th className="px-5 py-3 font-semibold text-left text-slate-500 dark:text-slate-400">
                   Trạng thái
                 </th>
-                <th className="text-left px-5 py-3 font-semibold text-slate-500 dark:text-slate-400 hidden lg:table-cell">
+                <th className="hidden px-5 py-3 font-semibold text-left text-slate-500 dark:text-slate-400 lg:table-cell">
                   Ngày tạo
                 </th>
                 <th className="px-5 py-3" />
@@ -128,11 +135,11 @@ export default function AdminUsersPage() {
               {users.map((u) => (
                 <tr
                   key={u._id || u.id}
-                  className="border-b border-slate-50 dark:border-slate-700/50 last:border-0 hover:bg-slate-50/50 dark:hover:bg-slate-700/30 transition-colors"
+                  className="transition-colors border-b border-slate-50 dark:border-slate-700/50 last:border-0 hover:bg-slate-50/50 dark:hover:bg-slate-700/30"
                 >
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">
+                      <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 text-xs font-bold text-white rounded-full bg-gradient-to-br from-blue-500 to-purple-500">
                         {u.displayName?.charAt(0).toUpperCase() || "U"}
                       </div>
                       <span className="font-medium text-slate-900 dark:text-white">
@@ -192,7 +199,7 @@ export default function AdminUsersPage() {
                             })
                           }
                           disabled={isToggling}
-                          className="cursor-pointer gap-2"
+                          className="gap-2 cursor-pointer"
                         >
                           {u.isActive ? (
                             <>
@@ -213,7 +220,7 @@ export default function AdminUsersPage() {
                             }
                           }}
                           disabled={isDeleting}
-                          className="cursor-pointer gap-2 text-red-600 focus:text-red-600 focus:bg-red-50"
+                          className="gap-2 text-red-600 cursor-pointer focus:text-red-600 focus:bg-red-50"
                         >
                           <Trash2 className="w-4 h-4" />
                           Xóa tài khoản
@@ -229,33 +236,51 @@ export default function AdminUsersPage() {
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Trang {page} / {totalPages}
+            Trang {page} / {totalPages} · {data?.total ?? 0} kết quả
           </p>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="dark:border-slate-600 dark:text-white"
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-slate-400">Hiển thị</span>
+            <select
+              value={limit}
+              onChange={(e) => {
+                setLimit(Number(e.target.value));
+                setPage(1);
+              }}
+              className="h-8 px-2 text-xs bg-white border rounded-lg border-slate-200 dark:border-slate-600 dark:bg-slate-800 text-slate-700 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-              className="dark:border-slate-600 dark:text-white"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </Button>
+              {LIMIT_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-slate-400">/ trang</span>
           </div>
         </div>
-      )}
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="dark:border-slate-600 dark:text-white"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            className="dark:border-slate-600 dark:text-white"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

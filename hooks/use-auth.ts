@@ -33,13 +33,36 @@ export const useLogin = () => {
   return useMutation<AuthResponse, unknown, LoginPayload>({
     mutationFn: authService.login,
     onSuccess: (data) => {
+      if (data.role === "admin") {
+        toast.error("Tài khoản admin không thể đăng nhập tại trang người dùng");
+        return;
+      }
       setAuth(data.user, data.token, data.role);
       toast.success(data.message ?? "Đăng nhập thành công");
-      if (data.role === "admin") {
-        router.push("/admin");
-      } else {
-        router.push("/messages");
+      router.push("/messages");
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error));
+    },
+  });
+};
+
+export const useAdminLogin = () => {
+  const setAuth = useAuthStore((state) => state.setAuth);
+  const router = useRouter();
+
+  return useMutation<AuthResponse, unknown, LoginPayload>({
+    mutationFn: authService.login,
+    onSuccess: (data) => {
+      if (data.role !== "admin") {
+        toast.error(
+          "Tài khoản người dùng không thể đăng nhập tại trang quản trị",
+        );
+        return;
       }
+      setAuth(data.user, data.token, data.role);
+      toast.success(data.message ?? "Đăng nhập thành công");
+      router.push("/admin/dashboard");
     },
     onError: (error) => {
       toast.error(getErrorMessage(error));

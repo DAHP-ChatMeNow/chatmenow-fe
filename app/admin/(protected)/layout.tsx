@@ -14,12 +14,12 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { icon: LayoutDashboard, label: "Tổng quan", path: "/admin" },
+  { icon: LayoutDashboard, label: "Tổng quan", path: "/admin/dashboard" },
   { icon: Users, label: "Người dùng", path: "/admin/users" },
   { icon: Newspaper, label: "Bài viết", path: "/admin/posts" },
 ];
 
-export default function AdminLayout({
+export default function AdminProtectedLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -30,13 +30,13 @@ export default function AdminLayout({
 
   useEffect(() => {
     if (!user || role !== "admin") {
-      router.replace("/login");
+      router.replace("/admin/login");
     }
   }, [user, role, router]);
 
   const handleLogout = () => {
     logout();
-    router.push("/login");
+    router.push("/admin/login");
   };
 
   return (
@@ -57,8 +57,8 @@ export default function AdminLayout({
         <nav className="flex-1 px-3 py-4 space-y-1">
           {navItems.map(({ icon: Icon, label, path }) => {
             const active =
-              path === "/admin"
-                ? pathname === "/admin"
+              path === "/admin/dashboard"
+                ? pathname === "/admin/dashboard"
                 : pathname.startsWith(path);
             return (
               <Link

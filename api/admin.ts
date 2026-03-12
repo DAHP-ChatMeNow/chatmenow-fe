@@ -6,13 +6,16 @@ export interface AdminUser {
   id: string;
   displayName: string;
   email: string;
+  phone?: string;
   avatar?: string;
   role: string;
   isActive: boolean;
+  isPremium?: boolean;
   createdAt: string;
 }
 
 export interface AdminUsersResponse {
+  success: boolean;
   users: AdminUser[];
   total: number;
   page: number;
@@ -20,7 +23,7 @@ export interface AdminUsersResponse {
 }
 
 const getUsers = async (page = 1, limit = 20, search = "") => {
-  const { data } = await api.get<AdminUsersResponse>("/admin/users", {
+  const { data } = await api.get<AdminUsersResponse>("/users/all", {
     params: { page, limit, search },
   });
   return data;
