@@ -3,6 +3,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { SocketProvider } from "@/components/providers/socket-provider";
+import { VideoCallProvider } from "@/components/providers/video-call-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { LanguageProvider } from "@/contexts/language-context";
 
@@ -39,10 +40,12 @@ export default function RootLayout({
           <LanguageProvider>
             <QueryProvider>
               <SocketProvider>
-                <div className="min-h-screen w-full bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
-                  {children}
-                  <Toaster position="top-right" richColors />
-                </div>
+                <VideoCallProvider>
+                  <div className="w-full min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+                    {children}
+                    <Toaster position="top-right" richColors />
+                  </div>
+                </VideoCallProvider>
               </SocketProvider>
             </QueryProvider>
           </LanguageProvider>
