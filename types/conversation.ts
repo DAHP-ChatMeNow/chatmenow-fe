@@ -10,6 +10,12 @@ export interface LastMessage {
   senderId?: string;
   senderName?: string;
   type?: string;
+  callInfo?: {
+    status?: string;
+    duration?: number;
+    startedAt?: Date | string;
+    endedAt?: Date | string;
+  };
   createdAt?: Date;
 }
 

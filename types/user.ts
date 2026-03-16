@@ -12,6 +12,10 @@ export interface User {
   themeColor?: string;
   isOnline: boolean;
   lastSeen?: Date;
+  lastSeenText?: string;
+  friendsCount?: number;
+  isFriend?: boolean;
+  mutualFriendsCount?: number;
   friends: string[];
   createdAt: Date;
 }

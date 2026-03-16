@@ -1,11 +1,5 @@
 "use client";
-import {
-  MessageSquare,
-  Users,
-  LayoutDashboard,
-  User,
-  Settings,
-} from "lucide-react";
+import { MessageSquare, Users, Newspaper, User, Settings } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -16,7 +10,7 @@ export function Sidebar({ mode = "desktop" }: { mode?: "desktop" | "mobile" }) {
 
   const navItems = [
     { icon: MessageSquare, path: "/messages", label: "Nhắn tin" },
-    { icon: LayoutDashboard, path: "/blog", label: "Bài viết" },
+    { icon: Newspaper, path: "/blog", label: "Bài viết" },
     { icon: Users, path: "/contacts", label: "Bạn bè" },
     { icon: User, path: "/profile", label: "Cá nhân" },
     { icon: Settings, path: "/settings", label: "Cài đặt" },

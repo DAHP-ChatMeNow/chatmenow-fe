@@ -5,6 +5,7 @@ import { Search, Edit } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
+import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 import {
   Dialog,
   DialogTrigger,
@@ -94,16 +95,12 @@ export function ChatSidebar() {
                             }}
                           />
                           <div className="flex items-center gap-3">
-                            {/* avatar */}
-                            {c.avatar ? (
-                              <img
-                                src={c.avatar}
-                                alt={c.displayName}
-                                className="object-cover w-6 h-6 rounded-full"
-                              />
-                            ) : (
-                              <div className="w-6 h-6 rounded-full bg-slate-200" />
-                            )}
+                            <PresignedAvatar
+                              avatarKey={c.avatar}
+                              displayName={c.displayName}
+                              className="w-6 h-6"
+                              fallbackClassName="bg-slate-200 text-slate-600 text-[10px]"
+                            />
                             <div className="text-sm text-slate-800">
                               {c.displayName}
                             </div>
@@ -154,7 +151,7 @@ export function ChatSidebar() {
         <div className="relative">
           <Search className="absolute w-4 h-4 -translate-y-1/2 left-4 top-1/2 text-slate-400" />
           <Input
-            placeholder="Search messages..."
+            placeholder="Tìm kiếm đoạn chat..."
             className="bg-white border shadow-sm pl-11 border-slate-200/80 h-11 rounded-xl focus-visible:ring-2 focus-visible:ring-blue-500/20"
           />
         </div>

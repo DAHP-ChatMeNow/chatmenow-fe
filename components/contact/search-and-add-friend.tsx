@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Search, UserPlus, Loader, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   useSearchUsers,
@@ -38,19 +38,12 @@ function SearchResultItem({
   return (
     <div className="flex items-center justify-between p-4 transition-all duration-200 border border-gray-200 rounded-xl hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 hover:border-blue-300 hover:shadow-md">
       <div className="flex items-center gap-3">
-        <Avatar className="w-12 h-12 ring-2 ring-blue-100">
-          {user.avatar ? (
-            <img
-              src={user.avatar}
-              alt={user.displayName}
-              className="object-cover w-full h-full"
-            />
-          ) : (
-            <AvatarFallback className="text-lg font-bold text-white bg-gradient-to-br from-blue-400 to-indigo-500">
-              {user.displayName.charAt(0).toUpperCase()}
-            </AvatarFallback>
-          )}
-        </Avatar>
+        <PresignedAvatar
+          avatarKey={user.avatar}
+          displayName={user.displayName}
+          className="w-12 h-12 ring-2 ring-blue-100"
+          fallbackClassName="text-lg"
+        />
         <div>
           <p className="text-base font-semibold text-gray-900">
             {user.displayName}

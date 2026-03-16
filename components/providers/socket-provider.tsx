@@ -16,6 +16,10 @@ import { toast } from "sonner";
 import { BASE_SOCKET_URL } from "@/types/utils";
 import { Notification } from "@/types/notification";
 import { Message } from "@/types/message";
+import { MessagesResponse } from "@/api/chat";
+import { ContactsResponse } from "@/api/contact";
+import { User } from "@/types/user";
+import { formatPresenceStatus } from "@/lib/utils";
 
 const SOCKET_URL = BASE_SOCKET_URL;
 
@@ -61,6 +65,12 @@ interface FriendListUpdatedEvent {
   };
 }
 
+interface UserPresenceEvent {
+  userId: string;
+  isOnline: boolean;
+  lastSeen?: string;
+}
+
 interface SocketContextType {
   socket: RefObject<Socket | null>;
   isConnected: boolean;
@@ -93,9 +103,14 @@ type RealtimeMessagePayload = Partial<Message> & {
   message?: Partial<Message> & { _id?: string };
 };
 
-type MessagesCache = {
-  messages?: Message[];
-  [key: string]: unknown;
+const getMessageSenderId = (message: Message): string | undefined => {
+  if (!message.senderId) return undefined;
+
+  if (typeof message.senderId === "string") {
+    return message.senderId;
+  }
+
+  return message.senderId?._id || message.senderId?.id;
 };
 
 const normalizeRealtimeMessage = (
@@ -113,7 +128,35 @@ const normalizeRealtimeMessage = (
   return {
     ...(raw as Message),
     id: normalizedId,
+    _id: raw._id || normalizedId,
     conversationId: normalizedConversationId,
+    status: "sent",
+    isOptimistic: false,
+  };
+};
+
+const applyPresenceToUser = (
+  targetUser: User | undefined,
+  presence: UserPresenceEvent,
+): User | undefined => {
+  if (!targetUser) return targetUser;
+
+  const targetUserId = targetUser.id || targetUser._id;
+  if (!targetUserId || targetUserId !== presence.userId) {
+    return targetUser;
+  }
+
+  return {
+    ...targetUser,
+    isOnline: presence.isOnline,
+    lastSeen: presence.lastSeen
+      ? new Date(presence.lastSeen)
+      : targetUser.lastSeen,
+    lastSeenText: formatPresenceStatus(
+      presence.isOnline,
+      presence.lastSeen,
+      undefined,
+    ),
   };
 };
 
@@ -225,15 +268,35 @@ export function SocketProvider({ children }: SocketProviderProps) {
 
       queryClient.setQueryData(
         ["messages", message.conversationId],
-        (oldData: MessagesCache | undefined) => {
+        (oldData: MessagesResponse | undefined) => {
           const oldMessages = oldData?.messages ?? [];
-          const exists = oldMessages.some(
-            (item) =>
-              (item.id || (item as Message & { _id?: string })._id) ===
-              message.id,
-          );
+          const messageSenderId = getMessageSenderId(message);
+          const existingIndex = oldMessages.findIndex((item) => {
+            const itemId = item.id || item._id;
+            const sameOptimisticPayload =
+              item.isOptimistic &&
+              item.status === "sending" &&
+              item.conversationId === message.conversationId &&
+              (item.content || "") === (message.content || "") &&
+              getMessageSenderId(item) === messageSenderId;
 
-          if (exists) return oldData;
+            return itemId === message.id || sameOptimisticPayload;
+          });
+
+          if (existingIndex >= 0) {
+            const nextMessages = [...oldMessages];
+            nextMessages[existingIndex] = {
+              ...nextMessages[existingIndex],
+              ...message,
+              status: "sent",
+              isOptimistic: false,
+            };
+
+            return {
+              ...(oldData || {}),
+              messages: nextMessages,
+            };
+          }
 
           return {
             ...(oldData || {}),
@@ -261,6 +324,60 @@ export function SocketProvider({ children }: SocketProviderProps) {
     socketInstance.on("notification:new", handleNotification);
     socketInstance.on("notification", handleNotification);
 
+    const handleUserPresence = (presence: UserPresenceEvent) => {
+      if (!presence?.userId) return;
+
+      const currentAuthUser = useAuthStore.getState().user;
+      const currentAuthUserId = currentAuthUser?.id || currentAuthUser?._id;
+      if (currentAuthUserId && currentAuthUserId === presence.userId) {
+        const updatedCurrentUser = applyPresenceToUser(
+          currentAuthUser,
+          presence,
+        );
+        if (updatedCurrentUser) {
+          useAuthStore.setState({ user: updatedCurrentUser });
+        }
+      }
+
+      queryClient.setQueryData<User | undefined>(["user-profile"], (oldUser) =>
+        applyPresenceToUser(oldUser, presence),
+      );
+
+      queryClient.setQueriesData<User | undefined>(
+        { queryKey: ["user-profile"] },
+        (oldUser) => applyPresenceToUser(oldUser, presence),
+      );
+
+      queryClient.setQueriesData<User | undefined>(
+        { queryKey: ["partner"] },
+        (oldUser) => applyPresenceToUser(oldUser, presence),
+      );
+
+      queryClient.setQueriesData<User | undefined>(
+        { queryKey: ["friend-profile"] },
+        (oldUser) => applyPresenceToUser(oldUser, presence),
+      );
+
+      queryClient.setQueriesData<ContactsResponse | undefined>(
+        { queryKey: ["contacts"] },
+        (oldData) => {
+          if (!oldData?.contacts?.length) return oldData;
+
+          const nextContacts = oldData.contacts.map((contact) => {
+            const updated = applyPresenceToUser(contact, presence);
+            return updated || contact;
+          });
+
+          return {
+            ...oldData,
+            contacts: nextContacts,
+          };
+        },
+      );
+    };
+
+    socketInstance.on("user:presence", handleUserPresence);
+
     // Real-time like event
     socketInstance.on("post:liked", ({ postId }: { postId: string }) => {
       queryClient.invalidateQueries({ queryKey: ["posts", postId] });
@@ -281,6 +398,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
       socketInstance.off("newMessage", handleRealtimeMessage);
       socketInstance.off("notification", handleNotification);
       socketInstance.off("notification:new");
+      socketInstance.off("user:presence", handleUserPresence);
       socketInstance.off("post:liked");
       socketInstance.offAny();
       socketInstance.disconnect();

@@ -36,13 +36,26 @@ export interface GetProfileResponse {
   user: User;
 }
 
+export interface GetFriendProfileResponse {
+  success: boolean;
+  user: User;
+}
+
+const mapMongoUser = (user: User): User => {
+  if (!user) return user;
+  return {
+    ...user,
+    id: user.id || user._id || "",
+  };
+};
+
 export const userService = {
   /**
    * Get current user profile
    */
   getProfile: async () => {
     const res = await api.get<GetProfileResponse>("/users/profile");
-    return res.data.user; // Extract user from response
+    return mapMongoUser(res.data.user); // Extract user from response
   },
 
   /**
@@ -134,7 +147,7 @@ export const userService = {
    */
   getUserById: async (userId: string) => {
     const res = await api.get<User>(`/users/${userId}`);
-    return res.data;
+    return mapMongoUser(res.data);
   },
 
   /**
@@ -144,7 +157,17 @@ export const userService = {
     const res = await api.get<{ success: boolean; user: User }>(
       `/users/${userId}`,
     );
-    return res.data.user;
+    return mapMongoUser(res.data.user);
+  },
+
+  /**
+   * Get friend profile from chat/user context
+   */
+  getFriendProfile: async (userId: string) => {
+    const res = await api.get<GetFriendProfileResponse>(
+      `/users/friends/${userId}/profile`,
+    );
+    return mapMongoUser(res.data.user);
   },
 
   /**

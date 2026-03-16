@@ -48,6 +48,7 @@ import { BlogSkeleton } from "@/components/skeletons/blog-skeleton";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/contexts/language-context";
 import { Post, PostMedia } from "@/types/post";
+import { formatPresenceStatus } from "@/lib/utils";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -256,6 +257,13 @@ export default function ProfilePage() {
               )}
               <p className="mt-1 text-xs text-slate-400">
                 @{user.id?.slice(0, 8)}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {formatPresenceStatus(
+                  user.isOnline,
+                  user.lastSeen,
+                  user.lastSeenText,
+                )}
               </p>
 
               {/* stats row */}

@@ -32,7 +32,7 @@ export function formatMessageTime(
 
   // Just now (< 1 minute)
   if (diffMins < 1) {
-    return "Now";
+    return "now";
   }
 
   // X minutes ago (< 1 hour)
@@ -80,4 +80,43 @@ export function formatMessageTime(
     "Dec",
   ];
   return `${months[date.getMonth()]} ${date.getDate()}`;
+}
+
+export function formatPresenceStatus(
+  isOnline?: boolean,
+  lastSeen?: string | Date,
+  lastSeenText?: string,
+): string {
+  if (lastSeenText && lastSeenText.trim().length > 0) {
+    return lastSeenText;
+  }
+
+  if (isOnline) {
+    return "Đang hoạt động";
+  }
+
+  if (!lastSeen) {
+    return "Vừa truy cập";
+  }
+
+  const date = typeof lastSeen === "string" ? new Date(lastSeen) : lastSeen;
+  if (Number.isNaN(date.getTime())) {
+    return "Vừa truy cập";
+  }
+
+  const now = Date.now();
+  const diffMs = now - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "Vừa truy cập";
+  if (diffMins < 60) return `${diffMins} phút trước`;
+  if (diffHours < 24) return `${diffHours} giờ trước`;
+  if (diffDays === 1) return "Hôm qua";
+
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
 }

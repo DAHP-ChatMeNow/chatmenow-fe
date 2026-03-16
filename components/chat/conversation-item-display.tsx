@@ -5,6 +5,25 @@ import { ChatItem } from "./chat-item";
 import { Conversation } from "@/types/conversation";
 import { formatMessageTime } from "@/lib/utils";
 
+const formatLastMessagePreview = (conversation: Conversation): string => {
+  const lastMessage = conversation.lastMessage;
+  if (!lastMessage) return "No messages yet";
+
+  const callStatus = (
+    lastMessage.callInfo?.status ||
+    lastMessage.content ||
+    ""
+  ).toLowerCase();
+
+  if (lastMessage.type === "system") {
+    if (callStatus === "ended") return "Cuộc gọi kết thúc";
+    if (callStatus === "rejected") return "Cuộc gọi bị từ chối";
+    if (callStatus === "missed") return "Cuộc gọi nhỡ";
+  }
+
+  return lastMessage.content || "No messages yet";
+};
+
 export function ConversationItemDisplay({
   conversation,
   currentUserId,
@@ -24,7 +43,7 @@ export function ConversationItemDisplay({
       id={conversation.id}
       avatar={avatar}
       name={displayName || "Unknown"}
-      lastMsg={conversation.lastMessage?.content || "No messages yet"}
+      lastMsg={formatLastMessagePreview(conversation)}
       time={formatMessageTime(conversation.lastMessage?.createdAt)}
       unread={0}
       isActive={isActive}

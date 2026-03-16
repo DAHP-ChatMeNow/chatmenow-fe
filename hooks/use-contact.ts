@@ -71,6 +71,15 @@ export const useGetUserProfile = (userId: string) => {
   });
 };
 
+export const useGetFriendProfile = (userId: string) => {
+  return useQuery({
+    queryKey: ["friend-profile", userId],
+    queryFn: () => userService.getFriendProfile(userId),
+    enabled: !!userId,
+    staleTime: 1000 * 60 * 5,
+  });
+};
+
 export const useFriendRequests = () => {
   return useQuery({
     queryKey: ["friend-requests"],

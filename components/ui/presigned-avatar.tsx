@@ -44,17 +44,29 @@ export function PresignedAvatar({
   className,
   fallbackClassName,
 }: PresignedAvatarProps) {
-  // Only fetch presigned URL if we have an avatar key
-  const { data: presignedData } = usePresignedUrl(avatarKey, !!avatarKey);
+  const isDirectUrl =
+    !!avatarKey &&
+    (avatarKey.startsWith("http://") ||
+      avatarKey.startsWith("https://") ||
+      avatarKey.startsWith("data:") ||
+      avatarKey.startsWith("blob:") ||
+      avatarKey.startsWith("/"));
+
+  // Only fetch presigned URL for object keys, not direct URLs.
+  const { data: presignedData } = usePresignedUrl(
+    avatarKey,
+    !!avatarKey && !isDirectUrl,
+  );
+
+  const resolvedSrc = isDirectUrl
+    ? avatarKey || ""
+    : (presignedData?.viewUrl ?? "");
 
   const fallbackText = displayName?.charAt(0).toUpperCase() || "U";
 
   return (
     <Avatar className={cn(className)}>
-      <AvatarImage
-        src={presignedData?.viewUrl || ""}
-        alt={displayName || "User avatar"}
-      />
+      <AvatarImage src={resolvedSrc} alt={displayName || "User avatar"} />
       <AvatarFallback
         className={cn(
           "bg-gradient-to-br from-blue-500 to-purple-500 text-white font-bold",

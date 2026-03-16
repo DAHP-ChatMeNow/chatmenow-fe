@@ -8,6 +8,7 @@ import { User } from "@/types/user";
 import { useRouter } from "next/navigation";
 import { useRemoveFriend } from "@/hooks/use-contact";
 import { useGetPrivateConversation } from "@/hooks/use-chat";
+import { formatPresenceStatus } from "@/lib/utils";
 
 interface FriendsListProps {
   friends: User[];
@@ -90,7 +91,11 @@ export function FriendsList({
             {friend.displayName}
           </p>
           <p className="text-xs text-slate-400">
-            {friend.isOnline ? "Đang hoạt động" : "Ngoại tuyến"}
+            {formatPresenceStatus(
+              friend.isOnline,
+              friend.lastSeen,
+              friend.lastSeenText,
+            )}
           </p>
         </div>
       ))}
