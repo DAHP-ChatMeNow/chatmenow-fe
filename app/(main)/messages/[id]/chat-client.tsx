@@ -14,7 +14,6 @@ import {
 import { MessageSkeleton } from "@/components/skeletons/message-skeleton";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useSocket } from "@/components/providers/socket-provider";
-import { useQueryClient } from "@tanstack/react-query";
 import { Message } from "@/types/message";
 
 export default function ChatDetailPage() {
@@ -39,7 +38,6 @@ export default function ChatDetailPage() {
 
   const { mutate: sendMessage, isPending } = useSendMessage();
   const { socket, isConnected } = useSocket();
-  const queryClient = useQueryClient();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
 
@@ -58,31 +56,10 @@ export default function ChatDetailPage() {
 
     socket.current.emit("joinConversation", conversationId);
 
-    const handleNewMessage = (newMessage: Message) => {
-      queryClient.setQueryData(
-        ["messages", conversationId],
-        (oldData: { messages: Message[] } | undefined) => {
-          if (!oldData) return { messages: [newMessage] };
-          const exists = oldData.messages.some(
-            (msg: Message) => msg.id === newMessage.id,
-          );
-          if (exists) return oldData;
-          return {
-            messages: [...oldData.messages, newMessage],
-          };
-        },
-      );
-
-      queryClient.invalidateQueries({ queryKey: ["conversations"] });
-    };
-
-    socket.current.on("newMessage", handleNewMessage);
-
     return () => {
-      socket.current?.off("newMessage", handleNewMessage);
       socket.current?.emit("leaveConversation", conversationId);
     };
-  }, [isConnected, conversationId, queryClient]);
+  }, [isConnected, conversationId, socket]);
 
   useEffect(() => {
     if (!socket.current || !conversationId) return;
@@ -180,7 +157,7 @@ export default function ChatDetailPage() {
 
                 return (
                   <div
-                    key={msg.id}
+                    key={msg.id || (msg as Message & { _id?: string })._id}
                     className={`flex ${isMe ? "justify-end" : "justify-start"}`}
                   >
                     <div

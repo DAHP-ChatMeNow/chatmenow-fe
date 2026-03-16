@@ -166,15 +166,15 @@ export function ChatHeader({
         <div className="flex items-center gap-2 md:gap-3">
           <button
             onClick={() => router.push("/messages")}
-            className="md:hidden p-2 -ml-2 hover:bg-slate-100 rounded-full transition-colors"
+            className="p-2 -ml-2 transition-colors rounded-full md:hidden hover:bg-slate-100"
           >
             <ChevronLeft className="w-6 h-6 text-slate-600" />
           </button>
 
           <div className="relative">
-            <Avatar className="h-11 w-11 md:h-12 md:w-12 border-2 border-white shadow-lg ring-1 ring-slate-100">
+            <Avatar className="border-2 border-white shadow-lg h-11 w-11 md:h-12 md:w-12 ring-1 ring-slate-100">
               <AvatarImage src={avatar} />
-              <AvatarFallback className="bg-gradient-to-br from-blue-400 to-blue-600 text-white font-bold">
+              <AvatarFallback className="font-bold text-white bg-gradient-to-br from-blue-400 to-blue-600">
                 {(displayName || "U").charAt(0).toUpperCase()}
               </AvatarFallback>
             </Avatar>
@@ -184,7 +184,7 @@ export function ChatHeader({
           </div>
 
           <div className="flex flex-col">
-            <h2 className="font-bold text-slate-900 text-base md:text-lg leading-tight">
+            <h2 className="text-base font-bold leading-tight text-slate-900 md:text-lg">
               {displayName}
             </h2>
             <p className="text-[11px] md:text-[12px] text-slate-400 font-medium">
@@ -200,7 +200,7 @@ export function ChatHeader({
               void handleStartCall("audio");
             }}
             className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
-            title={canCall ? "Goi audio" : "Chi ho tro trong chat ca nhan"}
+            title={canCall ? "Gọi audio" : "Chi ho tro trong chat ca nhan"}
           >
             <Phone className="w-5 h-5" />
           </button>
@@ -210,7 +210,7 @@ export function ChatHeader({
               void handleStartCall("video");
             }}
             className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
-            title={canCall ? "Goi video" : "Chi ho tro trong chat ca nhan"}
+            title={canCall ? "Gọi video" : "Chi ho tro trong chat ca nhan"}
           >
             <Video className="w-5 h-5" />
           </button>
@@ -501,7 +501,7 @@ function MessagesSideSheet({
                       key={m.id || idx}
                       src={src}
                       alt="image"
-                      className="w-full h-24 object-cover rounded-md border"
+                      className="object-cover w-full h-24 border rounded-md"
                     />
                   );
                 })
@@ -509,7 +509,7 @@ function MessagesSideSheet({
             </div>
           )}
           {tab === "links" && (
-            <div className="space-y-2 pr-3">
+            <div className="pr-3 space-y-2">
               {linkMsgs.length === 0 ? (
                 <div className="text-sm text-slate-500">Chưa có liên kết</div>
               ) : (
@@ -517,19 +517,19 @@ function MessagesSideSheet({
                   const links = ((m.content || "").match(urlRegex) ||
                     []) as string[];
                   return (
-                    <div key={m.id || idx} className="p-2 rounded-md border">
+                    <div key={m.id || idx} className="p-2 border rounded-md">
                       {links.map((l: string, i: number) => (
                         <a
                           key={i}
                           href={l}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-blue-600 text-sm break-all"
+                          className="text-sm text-blue-600 break-all"
                         >
                           {l}
                         </a>
                       ))}
-                      <div className="text-xs text-slate-500 mt-1">
+                      <div className="mt-1 text-xs text-slate-500">
                         {new Date(m.createdAt).toLocaleString()}
                       </div>
                     </div>
@@ -539,16 +539,16 @@ function MessagesSideSheet({
             </div>
           )}
           {tab === "search" && (
-            <div className="space-y-2 pr-3">
+            <div className="pr-3 space-y-2">
               {searchMsgs.length === 0 ? (
                 <div className="text-sm text-slate-500">Không có kết quả</div>
               ) : (
                 searchMsgs.map((m, idx) => (
-                  <div key={m.id || idx} className="p-2 rounded-md border">
-                    <div className="text-sm text-slate-800 whitespace-pre-wrap">
+                  <div key={m.id || idx} className="p-2 border rounded-md">
+                    <div className="text-sm whitespace-pre-wrap text-slate-800">
                       {m.content}
                     </div>
-                    <div className="text-xs text-slate-500 mt-1">
+                    <div className="mt-1 text-xs text-slate-500">
                       {new Date(m.createdAt).toLocaleString()}
                     </div>
                   </div>
@@ -609,10 +609,10 @@ function CreateGroupWithPartnerDialog({
             <label className="text-sm font-medium text-slate-700">
               Thành viên (đã chọn 1)
             </label>
-            <div className="mt-2 max-h-56 overflow-auto rounded-md border border-slate-200/80">
+            <div className="mt-2 overflow-auto border rounded-md max-h-56 border-slate-200/80">
               {partnerId && (
                 <label className="flex items-center gap-3 px-3 py-2 bg-slate-50">
-                  <input type="checkbox" className="h-4 w-4" checked disabled />
+                  <input type="checkbox" className="w-4 h-4" checked disabled />
                   <div className="text-sm text-slate-800">Đối tác hiện tại</div>
                 </label>
               )}
@@ -626,7 +626,7 @@ function CreateGroupWithPartnerDialog({
                   >
                     <input
                       type="checkbox"
-                      className="h-4 w-4"
+                      className="w-4 h-4"
                       checked={checked}
                       onChange={(e) => {
                         setSelectedIds((prev: string[]) =>
@@ -641,10 +641,10 @@ function CreateGroupWithPartnerDialog({
                         <img
                           src={c.avatar}
                           alt={c.displayName}
-                          className="h-6 w-6 rounded-full object-cover"
+                          className="object-cover w-6 h-6 rounded-full"
                         />
                       ) : (
-                        <div className="h-6 w-6 rounded-full bg-slate-200" />
+                        <div className="w-6 h-6 rounded-full bg-slate-200" />
                       )}
                       <div className="text-sm text-slate-800">
                         {c.displayName}
@@ -706,7 +706,7 @@ function InviteMembersDialog({
           <label className="text-sm font-medium text-slate-700">
             Chọn bạn bè
           </label>
-          <div className="mt-2 max-h-56 overflow-auto rounded-md border border-slate-200/80">
+          <div className="mt-2 overflow-auto border rounded-md max-h-56 border-slate-200/80">
             {contacts.length === 0 ? (
               <div className="p-3 text-sm text-slate-500">Chưa có danh bạ</div>
             ) : (
@@ -720,7 +720,7 @@ function InviteMembersDialog({
                   >
                     <input
                       type="checkbox"
-                      className="h-4 w-4"
+                      className="w-4 h-4"
                       checked={checked}
                       onChange={(e) => {
                         setSelectedIds((prev: string[]) =>
@@ -735,10 +735,10 @@ function InviteMembersDialog({
                         <img
                           src={c.avatar}
                           alt={c.displayName}
-                          className="h-6 w-6 rounded-full object-cover"
+                          className="object-cover w-6 h-6 rounded-full"
                         />
                       ) : (
-                        <div className="h-6 w-6 rounded-full bg-slate-200" />
+                        <div className="w-6 h-6 rounded-full bg-slate-200" />
                       )}
                       <div className="text-sm text-slate-800">
                         {c.displayName}
@@ -796,7 +796,7 @@ function ManageMembersDialog({
         <DialogHeader>
           <DialogTitle>Quản lý thành viên</DialogTitle>
         </DialogHeader>
-        <div className="space-y-2 max-h-64 overflow-auto">
+        <div className="space-y-2 overflow-auto max-h-64">
           {members.length === 0 ? (
             <div className="text-sm text-slate-500">
               Không có thành viên khác
@@ -805,23 +805,23 @@ function ManageMembersDialog({
             members.map((member) => (
               <div
                 key={member.userId}
-                className="flex items-center justify-between p-2 rounded-md border border-slate-200/80"
+                className="flex items-center justify-between p-2 border rounded-md border-slate-200/80"
               >
                 <div className="flex items-center gap-3">
                   {member.avatar ? (
                     <img
                       src={member.avatar}
                       alt={member.displayName}
-                      className="h-8 w-8 rounded-full object-cover"
+                      className="object-cover w-8 h-8 rounded-full"
                     />
                   ) : (
-                    <div className="h-8 w-8 rounded-full bg-slate-200" />
+                    <div className="w-8 h-8 rounded-full bg-slate-200" />
                   )}
                   <div className="text-sm text-slate-800">
                     {member.displayName}
                   </div>
                   {member.role === "admin" && (
-                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                    <span className="px-2 py-1 text-xs text-blue-800 bg-blue-100 rounded">
                       Admin
                     </span>
                   )}
@@ -841,11 +841,11 @@ function ManageMembersDialog({
           )}
         </div>
         {confirmRemoveId && (
-          <div className="p-3 rounded-md bg-red-50 border border-red-200">
-            <p className="text-sm text-red-800 mb-2">
+          <div className="p-3 border border-red-200 rounded-md bg-red-50">
+            <p className="mb-2 text-sm text-red-800">
               Xóa thành viên này khỏi nhóm?
             </p>
-            <div className="flex gap-2 justify-end">
+            <div className="flex justify-end gap-2">
               <Button
                 size="sm"
                 variant="outline"

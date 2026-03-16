@@ -15,6 +15,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { BASE_SOCKET_URL } from "@/types/utils";
 import { Notification } from "@/types/notification";
+import { Message } from "@/types/message";
 
 const SOCKET_URL = BASE_SOCKET_URL;
 
@@ -81,6 +82,40 @@ export const useSocket = () => {
 interface SocketProviderProps {
   children: ReactNode;
 }
+
+type RealtimeNotificationPayload = Partial<Notification> & {
+  senderName?: string;
+  content?: string;
+};
+
+type RealtimeMessagePayload = Partial<Message> & {
+  _id?: string;
+  message?: Partial<Message> & { _id?: string };
+};
+
+type MessagesCache = {
+  messages?: Message[];
+  [key: string]: unknown;
+};
+
+const normalizeRealtimeMessage = (
+  payload: RealtimeMessagePayload,
+): Message | null => {
+  const raw = payload?.message ?? payload;
+  if (!raw) return null;
+
+  const normalizedId = raw.id || raw._id;
+  const normalizedConversationId = raw.conversationId;
+  if (!normalizedId || !normalizedConversationId) {
+    return null;
+  }
+
+  return {
+    ...(raw as Message),
+    id: normalizedId,
+    conversationId: normalizedConversationId,
+  };
+};
 
 export function SocketProvider({ children }: SocketProviderProps) {
   const socketRef = useRef<Socket | null>(null);
@@ -184,17 +219,47 @@ export function SocketProvider({ children }: SocketProviderProps) {
       toast.info("Một người bạn đã xóa bạn khỏi danh sách");
     });
 
-    socketInstance.on("notification:new", (notification: Notification) => {
+    const handleRealtimeMessage = (payload: RealtimeMessagePayload) => {
+      const message = normalizeRealtimeMessage(payload);
+      if (!message) return;
+
+      queryClient.setQueryData(
+        ["messages", message.conversationId],
+        (oldData: MessagesCache | undefined) => {
+          const oldMessages = oldData?.messages ?? [];
+          const exists = oldMessages.some(
+            (item) =>
+              (item.id || (item as Message & { _id?: string })._id) ===
+              message.id,
+          );
+
+          if (exists) return oldData;
+
+          return {
+            ...(oldData || {}),
+            messages: [...oldMessages, message],
+          };
+        },
+      );
+
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    };
+
+    socketInstance.on("message:new", handleRealtimeMessage);
+    socketInstance.on("newMessage", handleRealtimeMessage);
+
+    const handleNotification = (notification: RealtimeNotificationPayload) => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
 
       if (notification.type === "like") {
         toast.info("Ai đó đã thích bài viết của bạn");
-      } else if (notification.type === "message") {
-        toast.info("Bạn có tin nhắn mới");
       } else if (notification.type !== "friend_request") {
-        toast.info(notification.message);
+        toast.info(notification.message || "Bạn có thông báo mới");
       }
-    });
+    };
+
+    socketInstance.on("notification:new", handleNotification);
+    socketInstance.on("notification", handleNotification);
 
     // Real-time like event
     socketInstance.on("post:liked", ({ postId }: { postId: string }) => {
@@ -212,6 +277,9 @@ export function SocketProvider({ children }: SocketProviderProps) {
       socketInstance.off("friend_request_removed");
       socketInstance.off("friend_list_updated");
       socketInstance.off("friend_removed");
+      socketInstance.off("message:new", handleRealtimeMessage);
+      socketInstance.off("newMessage", handleRealtimeMessage);
+      socketInstance.off("notification", handleNotification);
       socketInstance.off("notification:new");
       socketInstance.off("post:liked");
       socketInstance.offAny();

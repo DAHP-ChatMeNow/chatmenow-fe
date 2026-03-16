@@ -308,7 +308,24 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
   );
 
   const ensureLocalStream = useCallback(async (callType: VideoCallType) => {
-    if (localStreamRef.current) return localStreamRef.current;
+    const existingStream = localStreamRef.current;
+    if (existingStream) {
+      const hasLiveAudio = existingStream
+        .getAudioTracks()
+        .some((track) => track.readyState === "live");
+      const hasLiveVideo = existingStream
+        .getVideoTracks()
+        .some((track) => track.readyState === "live");
+
+      // Reuse stream only when tracks still live and satisfy current call type.
+      if (hasLiveAudio && (callType === "audio" || hasLiveVideo)) {
+        return existingStream;
+      }
+
+      existingStream.getTracks().forEach((track) => track.stop());
+      localStreamRef.current = null;
+      setLocalStream(null);
+    }
 
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error("This device does not support WebRTC");
@@ -350,6 +367,7 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
         emitSignal("ice-candidate", {
           callId: call.callId,
           candidate: event.candidate,
+          from: call.isCaller ? "caller" : "receiver",
           targetUserId: call.peerUserId,
         });
       };
