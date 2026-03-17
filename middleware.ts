@@ -3,12 +3,14 @@ import type { NextRequest } from "next/server";
 
 export function middleware(request: NextRequest) {
   const host = request.headers.get("host") || "";
-  const isAdminPortal = host.startsWith("admin.");
+  const hostname = host.split(":")[0].toLowerCase();
+  const isAdminPortal =
+    hostname.startsWith("admin.") || hostname.startsWith("admin-dev.");
   const token = request.cookies.get("auth-token")?.value;
   const role = request.cookies.get("user-role")?.value;
   const { pathname } = request.nextUrl;
 
-  // ============ ADMIN PORTAL (admin.localhost:3000) ============
+  // ============ ADMIN PORTAL (admin.* / admin-dev.*) ============
   if (isAdminPortal) {
     // Block user-only pages on admin portal (no register, no forgot-password, no landing)
     const blockedOnAdmin = ["/signup", "/forgot-password"];
@@ -50,7 +52,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // ============ USER PORTAL (localhost:3000) ============
+  // ============ USER PORTAL (all other hosts, e.g. localhost/dev.*) ============
 
   // Protect all /admin/* routes — only admin role can access
   if (pathname.startsWith("/admin")) {
