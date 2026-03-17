@@ -87,6 +87,11 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
     urls:
       process.env.NEXT_PUBLIC_WEBRTC_STUN_URL || "stun:stun.l.google.com:19302",
   },
+  {
+    urls: "turn:openrelay.metered.ca:80",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
 ];
 
 const toId = (value: unknown): string | undefined => {
