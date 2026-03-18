@@ -62,7 +62,7 @@
 
 /* Hiệu ứng mượt mà cho các tương tác nhỏ */
 * {
-  @apply border-border transition-colors duration-200;
+  @apply transition-colors duration-200 border-border;
 }
 
 @layer base {

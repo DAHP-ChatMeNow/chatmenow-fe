@@ -31,7 +31,8 @@ export interface VideoCallStats {
 }
 
 export interface IncomingCallData {
-  callId: string;
+  roomId: string;
+  callId?: string;
   callerId: string;
   callerName?: string;
   callerAvatar?: string;

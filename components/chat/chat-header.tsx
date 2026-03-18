@@ -190,7 +190,12 @@ export function ChatHeader({
   }, [conversation, currentUserId]);
 
   const displayName = name || "Chat";
-  const canCall = conversation?.type === "private" && !!partnerId && !isBusy;
+  const isCallEnabled = process.env.NEXT_PUBLIC_ENABLE_CALL === "true";
+  const canCall =
+    isCallEnabled &&
+    conversation?.type === "private" &&
+    !!partnerId &&
+    !isBusy;
 
   const handleStartCall = async (callType: "audio" | "video") => {
     if (!partnerId || !canCall) return;
