@@ -25,7 +25,10 @@ export default function MainLayout({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   const hideFloatingNotification =
-    pathname === "/notifications" || pathname.startsWith("/messages");
+    pathname === "/notifications" ||
+    pathname.startsWith("/messages") ||
+    pathname.startsWith("/reels") ||
+    pathname.startsWith("/games");
 
   // Auto-sync user profile từ server (chạy mỗi 30s và khi focus window)
   useUserProfile();
