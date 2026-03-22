@@ -26,11 +26,18 @@ import {
   useComments,
   useAddComment,
 } from "@/hooks/use-post";
+import {
+  useCreateStory,
+  useDeleteStory,
+  useMarkStoryViewed,
+  useStoryFeed,
+} from "@/hooks/use-story";
 import { BlogSkeleton } from "@/components/skeletons/blog-skeleton";
 import { useAuthStore } from "@/store/use-auth-store";
 import { Post, PostMedia } from "@/types/post";
 import { toast } from "sonner";
 import { PostMediaLightbox } from "@/components/post/post-media-lightbox";
+import { StoryViewer } from "@/components/post/story-viewer";
 
 type MediaPreview = {
   url: string;
@@ -42,6 +49,8 @@ const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_VIDEO_SIZE = 50 * 1024 * 1024; // 50MB
 const MAX_VIDEO_DURATION = 300; // 5 phút
 const MAX_FILES = 10;
+const MAX_STORY_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+const MAX_STORY_VIDEO_DURATION = 10; // 10s
 
 const getVideoDuration = (file: File): Promise<number> =>
   new Promise((resolve) => {
@@ -68,7 +77,11 @@ export default function BlogPage() {
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>(
     {},
   );
+  const [isStoryViewerOpen, setIsStoryViewerOpen] = useState(false);
+  const [storyViewerGroupIndex, setStoryViewerGroupIndex] = useState(0);
+  const storyInputRef = useRef<HTMLInputElement>(null);
   const user = useAuthStore((state) => state.user);
+  const currentUserId = user?.id || user?._id;
 
   const {
     data,
@@ -80,6 +93,10 @@ export default function BlogPage() {
   } = useFeed();
 
   const { mutate: createPost, isPending: isCreatingPost } = useCreatePost();
+  const { data: storyGroups = [] } = useStoryFeed();
+  const { mutate: createStory, isPending: isCreatingStory } = useCreateStory();
+  const { mutate: markStoryViewed } = useMarkStoryViewed();
+  const { mutate: deleteStory } = useDeleteStory();
   const { mutate: likePost } = useLikePost();
   const { mutate: addComment, isPending: isAddingComment } = useAddComment();
 
@@ -159,6 +176,65 @@ export default function BlogPage() {
         },
       },
     );
+  };
+
+  const openStoryPicker = () => {
+    if (isCreatingStory) return;
+    storyInputRef.current?.click();
+  };
+
+  const handleStoryFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const isImage = file.type.startsWith("image/");
+    const isVideo = file.type.startsWith("video/");
+
+    if (!isImage && !isVideo) {
+      toast.error("Story chỉ hỗ trợ ảnh hoặc video");
+      e.target.value = "";
+      return;
+    }
+
+    if (file.size > MAX_STORY_FILE_SIZE) {
+      toast.error("File story vượt quá 20MB");
+      e.target.value = "";
+      return;
+    }
+
+    let videoDuration: number | undefined;
+    if (isVideo) {
+      videoDuration = await getVideoDuration(file);
+      if (videoDuration > MAX_STORY_VIDEO_DURATION) {
+        toast.error("Video story không được vượt quá 10 giây");
+        e.target.value = "";
+        return;
+      }
+    }
+
+    createStory(
+      {
+        mediaFile: file,
+        privacy: "friends",
+        videoDuration,
+      },
+      {
+        onSettled: () => {
+          e.target.value = "";
+        },
+      },
+    );
+  };
+
+  const handleOpenStoryGroup = (groupIndex: number) => {
+    setStoryViewerGroupIndex(groupIndex);
+    setIsStoryViewerOpen(true);
+  };
+
+  const handleDeleteStory = (storyId: string) => {
+    deleteStory(storyId);
   };
 
   const handleLike = (postId: string, isLiked: boolean) => {
@@ -320,90 +396,89 @@ export default function BlogPage() {
           <div className="p-2 min-w-0 bg-white border shadow-sm rounded-2xl border-slate-100 md:p-4">
             <div className="flex w-full min-w-0 gap-2 pb-2 overflow-x-auto scrollbar-hide">
               {/* Create Story */}
-              <button className="relative flex-shrink-0 w-[110px] h-[190px] md:w-[120px] md:h-[200px] rounded-xl overflow-hidden group bg-gradient-to-b from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900 hover:scale-[1.02] transition-transform">
+              <button
+                type="button"
+                onClick={openStoryPicker}
+                className="relative flex-shrink-0 w-[110px] h-[190px] md:w-[120px] md:h-[200px] rounded-xl overflow-hidden group bg-gradient-to-b from-slate-100 to-slate-200 hover:scale-[1.02] transition-transform"
+              >
                 <div className="absolute inset-0 flex flex-col items-center justify-end pb-4">
                   <div className="flex items-center justify-center w-10 h-10 mb-2 bg-white rounded-full shadow-lg dark:bg-slate-800">
                     <div className="flex items-center justify-center w-8 h-8 transition-colors bg-blue-600 rounded-full group-hover:bg-blue-700">
-                      <Plus className="w-5 h-5 text-white" />
+                      {isCreatingStory ? (
+                        <Loader2 className="w-4 h-4 text-white animate-spin" />
+                      ) : (
+                        <Plus className="w-5 h-5 text-white" />
+                      )}
                     </div>
                   </div>
-                  <span className="text-xs font-semibold text-slate-900 dark:text-white">
+                  <span className="text-xs font-semibold text-slate-900">
                     Tạo tin
                   </span>
                 </div>
               </button>
+              <input
+                ref={storyInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"
+                className="hidden"
+                onChange={handleStoryFileChange}
+              />
 
-              {/* Sample Stories - Replace with real data */}
-              {[
-                {
-                  id: 1,
-                  name: "Ngọc Bích",
-                  avatar: "https://i.pravatar.cc/150?img=1",
-                  image:
-                    "https://images.unsplash.com/photo-1516726817505-f5ed825624d8?w=400&h=600&fit=crop",
-                },
-                {
-                  id: 2,
-                  name: "Thanh Thảo",
-                  avatar: "https://i.pravatar.cc/150?img=2",
-                  image:
-                    "https://images.unsplash.com/photo-1506748686214-e9df14d4d9d0?w=400&h=600&fit=crop",
-                },
-                {
-                  id: 3,
-                  name: "Trần Lê Văn Hùng",
-                  avatar: "https://i.pravatar.cc/150?img=3",
-                  image:
-                    "https://images.unsplash.com/photo-1511988617509-a57c8a288659?w=400&h=600&fit=crop",
-                },
-                {
-                  id: 4,
-                  name: "Thu Thủy",
-                  avatar: "https://i.pravatar.cc/150?img=4",
-                  image:
-                    "https://images.unsplash.com/photo-1500462918059-b1a0cb512f1d?w=400&h=600&fit=crop",
-                },
-                {
-                  id: 5,
-                  name: "Thanh Nhàn",
-                  avatar: "https://i.pravatar.cc/150?img=5",
-                  image:
-                    "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&h=600&fit=crop",
-                },
-              ].map((story) => (
+              {storyGroups.map((group, groupIndex) => {
+                const cover = group.stories[group.stories.length - 1]?.media?.url;
+                return (
                 <button
-                  key={story.id}
+                  key={`${group.user?._id || group.user?.id}-${groupIndex}`}
+                  type="button"
+                  onClick={() => handleOpenStoryGroup(groupIndex)}
                   className="relative flex-shrink-0 w-[110px] h-[190px] md:w-[120px] md:h-[200px] rounded-xl overflow-hidden group hover:scale-[1.02] transition-transform"
                 >
                   {/* Background Image */}
-                  <div
-                    className="absolute inset-0 bg-center bg-cover"
-                    style={{ backgroundImage: `url(${story.image})` }}
-                  >
-                    {/* Dark Overlay at bottom for text readability */}
-                    <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/60" />
-                  </div>
+                  {cover ? (
+                    <div
+                      className="absolute inset-0 bg-center bg-cover"
+                      style={{ backgroundImage: `url(${cover})` }}
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/60" />
+                    </div>
+                  ) : (
+                    <div className="absolute inset-0 bg-slate-300" />
+                  )}
 
                   {/* Avatar with blue ring at top-left */}
                   <div className="absolute top-3 left-3">
-                    <div className="p-0.5 bg-blue-500 rounded-full">
-                      <Avatar className="border-2 border-white w-9 h-9">
-                        <AvatarImage src={story.avatar} />
-                        <AvatarFallback>{story.name[0]}</AvatarFallback>
-                      </Avatar>
+                    <div
+                      className={`p-0.5 rounded-full ${group.hasUnviewed ? "bg-blue-500" : "bg-slate-300"}`}
+                    >
+                      <PresignedAvatar
+                        avatarKey={group.user?.avatar}
+                        displayName={group.user?.displayName}
+                        className="border-2 border-white w-9 h-9"
+                      />
                     </div>
                   </div>
 
                   {/* Name at bottom */}
                   <div className="absolute bottom-0 left-0 right-0 p-3">
                     <span className="text-xs font-semibold text-white drop-shadow-lg line-clamp-2">
-                      {story.name}
+                      {group.user?.displayName}
                     </span>
                   </div>
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
+
+          <StoryViewer
+            open={isStoryViewerOpen}
+            groups={storyGroups}
+            initialGroupIndex={storyViewerGroupIndex}
+            currentUserId={currentUserId}
+            onMarkViewed={(storyId) => markStoryViewed(storyId)}
+            onDeleteStory={handleDeleteStory}
+            onClose={() => setIsStoryViewerOpen(false)}
+          />
 
           {/* Feed */}
           {isLoading ? (
