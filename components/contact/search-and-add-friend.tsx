@@ -36,22 +36,20 @@ function SearchResultItem({
   const { data: emailData } = useGetUserEmailById(user.id);
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition-all hover:border-slate-300 sm:p-4">
+    <div className="flex items-center justify-between p-4 transition-all duration-200 border border-gray-200 rounded-xl hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 hover:border-blue-300 hover:shadow-md">
       <div className="flex items-center gap-3">
         <PresignedAvatar
           avatarKey={user.avatar}
           displayName={user.displayName}
-          className="h-11 w-11 ring-1 ring-blue-100"
-          fallbackClassName="text-base"
+          className="w-12 h-12 ring-2 ring-blue-100"
+          fallbackClassName="text-lg"
         />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-slate-900 sm:text-base">
+        <div>
+          <p className="text-base font-semibold text-gray-900">
             {user.displayName}
           </p>
           {emailData?.email && (
-            <p className="truncate text-xs text-slate-500 sm:text-sm">
-              {emailData.email}
-            </p>
+            <p className="text-sm text-gray-500">{emailData.email}</p>
           )}
         </div>
       </div>
@@ -59,7 +57,7 @@ function SearchResultItem({
         size="sm"
         onClick={() => onSendRequest(user.id)}
         disabled={isSending}
-        className="mt-3 h-9 w-full gap-2 rounded-lg bg-blue-600 text-white shadow-sm transition-all hover:bg-blue-700 sm:mt-0 sm:w-auto"
+        className="flex items-center gap-2 text-white transition-all duration-200 shadow-md bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 hover:shadow-lg"
       >
         {isSending ? (
           <Loader className="w-4 h-4 animate-spin" />
@@ -101,19 +99,28 @@ export function SearchAndAddFriend({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100%-1rem)] max-h-[88dvh] max-w-2xl gap-0 overflow-hidden rounded-2xl bg-white p-0">
-        <DialogHeader className="border-b border-slate-200 px-4 py-3 sm:px-5">
-          <DialogTitle className="text-base font-semibold text-slate-900">
+      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col bg-white">
+        <DialogHeader className="relative">
+          <DialogTitle className="text-gray-900">
             Tìm kiếm và thêm bạn
           </DialogTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="absolute top-0 right-0 w-8 h-8 p-0 rounded-full bottom-2 hover:bg-gray-100"
+            onClick={() => onOpenChange(false)}
+          >
+            <X className="w-4 h-4 text-gray-600" />
+          </Button>
         </DialogHeader>
 
-        <div className="flex flex-1 flex-col space-y-4 overflow-hidden px-4 pb-4 pt-4 sm:px-5">
+        <div className="flex flex-col flex-1 space-y-4 overflow-hidden">
+          {/* Search Input */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+            <Search className="absolute w-5 h-5 text-blue-400 -translate-y-1/2 left-3 top-1/2" />
             <Input
               placeholder="Tìm kiếm theo tên, email hoặc số điện thoại..."
-              className="h-11 rounded-xl border-slate-200 bg-slate-50 pl-10 pr-10 text-slate-900 placeholder:text-slate-500 focus-visible:ring-blue-500"
+              className="pl-10 pr-10 text-gray-900 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 focus-visible:ring-blue-400 placeholder:text-gray-500"
               value={searchQuery}
               onChange={(e) => {
                 const value = e.target.value;
@@ -124,7 +131,7 @@ export function SearchAndAddFriend({
               <Button
                 size="sm"
                 variant="ghost"
-                className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 p-0 transition-colors hover:bg-red-100 hover:text-red-600"
+                className="absolute p-0 transition-colors -translate-y-1/2 right-1 top-1/2 h-7 w-7 hover:bg-red-100 hover:text-red-600"
                 onClick={handleClearSearch}
               >
                 <X className="w-4 h-4" />
@@ -132,31 +139,32 @@ export function SearchAndAddFriend({
             )}
           </div>
 
-          <ScrollArea className="flex-1 pr-1">
+          {/* Search Results */}
+          <ScrollArea className="flex-1">
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
-                <Loader className="h-7 w-7 animate-spin text-blue-500" />
+                <Loader className="w-8 h-8 text-blue-500 animate-spin" />
               </div>
             ) : searchQuery.length === 0 ? (
-              <div className="py-16 text-center text-slate-600">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-50">
-                  <Search className="h-8 w-8 text-blue-500" />
+              <div className="py-16 text-center text-gray-600">
+                <div className="flex items-center justify-center w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100">
+                  <Search className="w-10 h-10 text-blue-500" />
                 </div>
-                <p className="text-sm font-medium sm:text-base">
+                <p className="text-lg font-medium">
                   Nhập tên, email hoặc số điện thoại để tìm kiếm
                 </p>
               </div>
             ) : searchResults.length === 0 ? (
-              <div className="py-16 text-center text-slate-600">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
-                  <Search className="h-8 w-8 text-slate-400" />
+              <div className="py-16 text-center text-gray-600">
+                <div className="flex items-center justify-center w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-gray-100 to-gray-200">
+                  <Search className="w-10 h-10 text-gray-400" />
                 </div>
-                <p className="text-sm font-medium sm:text-base">
+                <p className="text-lg font-medium">
                   Không tìm thấy người dùng nào
                 </p>
               </div>
             ) : (
-              <div className="space-y-2 pb-1">
+              <div className="pr-2 space-y-2">
                 {searchResults.map((user: User) => (
                   <SearchResultItem
                     key={user.id}

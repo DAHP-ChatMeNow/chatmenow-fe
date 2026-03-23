@@ -1,6 +1,7 @@
 "use client";
 
-import { MessageCircle, Loader, UserMinus, MoreHorizontal } from "lucide-react";
+import { MessageCircle, Loader } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 import { Button } from "@/components/ui/button";
 import { User } from "@/types/user";
@@ -8,7 +9,6 @@ import { useRouter } from "next/navigation";
 import { useRemoveFriend } from "@/hooks/use-contact";
 import { useGetPrivateConversation } from "@/hooks/use-chat";
 import { formatPresenceStatus } from "@/lib/utils";
-import { useState } from "react";
 
 interface FriendsListProps {
   friends: User[];
@@ -24,7 +24,6 @@ export function FriendsList({
   const router = useRouter();
   const { mutate: removeFriend } = useRemoveFriend();
   const { mutate: getPrivateConversation } = useGetPrivateConversation();
-  const [expandedFriendId, setExpandedFriendId] = useState<string | null>(null);
 
   const filteredFriends = friends.filter((friend) =>
     friend.displayName.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -49,78 +48,55 @@ export function FriendsList({
 
   if (filteredFriends.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-300 bg-white py-8 text-center text-slate-500">
+      <div className="text-center py-8 text-slate-500">
         Không tìm thấy bạn bè nào
       </div>
     );
   }
 
   return (
-    <div className="space-y-1">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
       {filteredFriends.map((friend) => (
-        <div key={friend.id} className="px-1 py-1.5 rounded-xl hover:bg-slate-50">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <PresignedAvatar
-                avatarKey={friend.avatar}
-                displayName={friend.displayName}
-                className="w-12 h-12"
-                fallbackClassName="bg-slate-100 text-slate-600 text-xs font-semibold"
-              />
-              {friend.isOnline && (
-                <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-green-500" />
-              )}
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[15px] font-semibold leading-tight text-slate-900">
-                {friend.displayName}
-              </p>
-              <p className="truncate text-[13px] text-slate-500">
-                {typeof friend.mutualFriendsCount === "number"
-                  ? `${friend.mutualFriendsCount} bạn chung`
-                  : formatPresenceStatus(
-                      friend.isOnline,
-                      friend.lastSeen,
-                      friend.lastSeenText,
-                    )}
-              </p>
-            </div>
-
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-8 w-8 rounded-full p-0 text-slate-600 hover:bg-slate-100"
-              onClick={() =>
-                setExpandedFriendId((prev) => (prev === friend.id ? null : friend.id))
-              }
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {expandedFriendId === friend.id && (
-            <div className="ml-[60px] mt-2 flex gap-2 pb-1">
+        <div
+          key={friend.id}
+          className="p-3 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all group"
+        >
+          <div className="flex items-start justify-between mb-2">
+            <PresignedAvatar
+              avatarKey={friend.avatar}
+              displayName={friend.displayName}
+              className="h-10 w-10"
+              fallbackClassName="bg-slate-100"
+            />
+            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <Button
                 size="sm"
-                variant="outline"
-                className="h-8 rounded-lg text-xs font-medium text-blue-600"
+                variant="ghost"
+                className="h-7 w-7 p-0"
                 onClick={() => handleMessageFriend(friend.id)}
               >
-                <MessageCircle className="mr-1 h-4 w-4" />
-                Nhắn tin
+                <MessageCircle className="w-4 h-4 text-blue-600" />
               </Button>
               <Button
                 size="sm"
-                variant="outline"
-                className="h-8 rounded-lg text-xs font-medium text-red-600 hover:text-red-700"
+                variant="ghost"
+                className="h-7 w-7 p-0 text-red-600"
                 onClick={() => removeFriend(friend.id)}
               >
-                <UserMinus className="mr-1 h-4 w-4" />
-                Xóa bạn
+                ×
               </Button>
             </div>
-          )}
+          </div>
+          <p className="font-semibold text-sm text-slate-900">
+            {friend.displayName}
+          </p>
+          <p className="text-xs text-slate-400">
+            {formatPresenceStatus(
+              friend.isOnline,
+              friend.lastSeen,
+              friend.lastSeenText,
+            )}
+          </p>
         </div>
       ))}
     </div>

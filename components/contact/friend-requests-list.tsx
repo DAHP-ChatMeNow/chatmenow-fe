@@ -1,5 +1,6 @@
 "use client";
 
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 import { Button } from "@/components/ui/button";
 import { FriendRequest } from "@/types/friend-request";
@@ -52,28 +53,23 @@ function FriendRequestItem({
   const isProcessing = processingIds.includes(requestId);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
-      <div className="flex items-center gap-3">
-        <PresignedAvatar
-          avatarKey={avatar}
-          displayName={displayName}
-          className="h-11 w-11"
-        />
+    <div className="flex items-center gap-4 p-4 border rounded-xl border-slate-100 hover:bg-slate-50">
+      <PresignedAvatar
+        avatarKey={avatar}
+        displayName={displayName}
+        className="w-12 h-12"
+      />
 
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-slate-900 sm:text-base">
-            {displayName}
-          </p>
-          {email && <p className="truncate text-xs text-slate-500">{email}</p>}
-        </div>
+      <div className="flex-1">
+        <p className="text-sm font-semibold">{displayName}</p>
+        {email && <p className="text-xs text-slate-400">{email}</p>}
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="flex gap-2">
         <Button
           size="sm"
           onClick={() => onAccept(requestId)}
           disabled={isProcessing}
-          className="h-9 rounded-lg text-xs sm:text-sm"
         >
           {isProcessing ? (
             <Loader className="w-3 h-3 animate-spin" />
@@ -87,7 +83,6 @@ function FriendRequestItem({
           variant="outline"
           onClick={() => onReject(requestId)}
           disabled={isProcessing}
-          className="h-9 rounded-lg text-xs sm:text-sm"
         >
           Từ chối
         </Button>
@@ -119,23 +114,17 @@ export function FriendRequestsList({
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-10">
-        <Loader className="h-5 w-5 animate-spin text-slate-400" />
-      </div>
-    );
+    return <Loader className="mx-auto animate-spin" />;
   }
 
   if (!requests || requests.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 py-8 text-center text-slate-500">
-        Không có lời mời kết bạn nào
-      </div>
+      <p className="text-center text-slate-500">Không có lời mời kết bạn nào</p>
     );
   }
 
   return (
-    <div className="space-y-2.5 sm:space-y-3">
+    <div className="space-y-3">
       {requests.map((req) => (
         <FriendRequestItem
           key={req._id || req.id}
