@@ -411,8 +411,7 @@ export default function LoginPage() {
                   </svg>
                 </div>
               </Link>
-              <h2 className="text-2xl font-bold text-slate-900">Đăng nhập</h2>
-              <p className="text-sm text-slate-500">Chào mừng trở lại 👋</p>
+              <h1 className="text-2xl font-bold text-slate-900">Đăng nhập</h1>
             </div>
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
