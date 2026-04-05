@@ -2,6 +2,17 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getDefaultRouteForUserAgent } from "@/lib/default-route";
 
+const redirectWithNoStore = (url: URL) => {
+  const response = NextResponse.redirect(url);
+  response.headers.set(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate, proxy-revalidate",
+  );
+  response.headers.set("Pragma", "no-cache");
+  response.headers.set("Expires", "0");
+  return response;
+};
+
 export function middleware(request: NextRequest) {
   const host = request.headers.get("host") || "";
   const hostname = host.split(":")[0].toLowerCase();
@@ -21,15 +32,15 @@ export function middleware(request: NextRequest) {
       blockedOnAdmin.some((p) => pathname.startsWith(p)) ||
       (pathname === "/" && !token)
     ) {
-      return NextResponse.redirect(new URL("/admin/login", request.url));
+      return redirectWithNoStore(new URL("/admin/login", request.url));
     }
 
     // Root path with auth → redirect to dashboard
     if (pathname === "/") {
       if (token && role === "admin") {
-        return NextResponse.redirect(new URL("/admin/users", request.url));
+        return redirectWithNoStore(new URL("/admin/users", request.url));
       }
-      return NextResponse.redirect(new URL("/admin/login", request.url));
+      return redirectWithNoStore(new URL("/admin/login", request.url));
     }
 
     // If pathname doesn't start with /admin, rewrite with /admin prefix
@@ -42,14 +53,14 @@ export function middleware(request: NextRequest) {
     // Admin login page — allow unauthenticated, redirect if already logged in
     if (pathname === "/admin/login") {
       if (token && role === "admin") {
-        return NextResponse.redirect(new URL("/admin/users", request.url));
+        return redirectWithNoStore(new URL("/admin/users", request.url));
       }
       return NextResponse.next();
     }
 
     // All other /admin/* routes require admin authentication
     if (!token || role !== "admin") {
-      return NextResponse.redirect(new URL("/admin/login", request.url));
+      return redirectWithNoStore(new URL("/admin/login", request.url));
     }
 
     return NextResponse.next();
@@ -61,16 +72,16 @@ export function middleware(request: NextRequest) {
   if (pathname.startsWith("/admin")) {
     if (pathname === "/admin/login") {
       if (token && role === "admin") {
-        return NextResponse.redirect(new URL("/admin/users", request.url));
+        return redirectWithNoStore(new URL("/admin/users", request.url));
       }
       return NextResponse.next();
     }
 
     if (!token) {
-      return NextResponse.redirect(new URL("/login", request.url));
+      return redirectWithNoStore(new URL("/login", request.url));
     }
     if (role !== "admin") {
-      return NextResponse.redirect(new URL("/login", request.url));
+      return redirectWithNoStore(new URL("/login", request.url));
     }
     return NextResponse.next();
   }
@@ -94,17 +105,17 @@ export function middleware(request: NextRequest) {
 
   // Not logged in → redirect to login
   if (!token && isProtectedRoute) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    return redirectWithNoStore(new URL("/login", request.url));
   }
 
   // Logged in at root path → redirect by device type
   if (token && pathname === "/") {
-    return NextResponse.redirect(new URL(defaultUserRoute, request.url));
+    return redirectWithNoStore(new URL(defaultUserRoute, request.url));
   }
 
   // Logged in visiting public route → redirect to dashboard
   if (token && isPublicRoute) {
-    return NextResponse.redirect(new URL(defaultUserRoute, request.url));
+    return redirectWithNoStore(new URL(defaultUserRoute, request.url));
   }
 
   return NextResponse.next();
