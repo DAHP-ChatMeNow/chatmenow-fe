@@ -297,7 +297,7 @@ const getComments = async (postId: string): Promise<PostCommentsResult> => {
     comments: Array.isArray(data?.comments)
       ? data.comments
           .map(mapComment)
-          .filter((comment) => comment.authorSource !== "ai")
+          .filter((comment: Comment) => comment.authorSource !== "ai")
       : [],
     aiSuggestion: pickAiSuggestion(data),
   };

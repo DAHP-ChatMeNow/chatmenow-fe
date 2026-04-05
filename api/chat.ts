@@ -418,7 +418,10 @@ export const chatService = {
             formData.append("botAvatar", payload.botAvatar);
           }
 
-          formData.append("image", payload.imageFile);
+          const imageFile = payload.imageFile;
+          if (imageFile instanceof File) {
+            formData.append("image", imageFile);
+          }
           return formData;
         })()
       : {
