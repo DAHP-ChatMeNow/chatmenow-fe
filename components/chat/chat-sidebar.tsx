@@ -15,11 +15,22 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useParams } from "next/navigation";
-import { useConversations, useCreateConversation } from "@/hooks/use-chat";
+import {
+  useAiConversation,
+  useConversations,
+  useCreateConversation,
+} from "@/hooks/use-chat";
 import { useContacts } from "@/hooks/use-contact";
 import { useAuthStore } from "@/store/use-auth-store";
 import { ChatListSkeleton } from "@/components/skeletons/chat-list-skeleton";
 import { ConversationItemDisplay } from "./conversation-item-display";
+import { Conversation } from "@/types/conversation";
+
+type ChatConversation = Conversation & {
+  isAI?: boolean;
+  isAi?: boolean;
+  isAiAssistant?: boolean;
+};
 
 export function ChatSidebar() {
   const [open, setOpen] = useState(false);
@@ -33,10 +44,44 @@ export function ChatSidebar() {
   const currentId = params.id as string;
   const user = useAuthStore((state) => state.user);
   const { data: conversationsData, isLoading, error } = useConversations();
-  const conversations = useMemo(
-    () => conversationsData?.conversations || [],
-    [conversationsData],
-  );
+  const { data: aiConversationData } = useAiConversation();
+  const conversations = useMemo(() => {
+    const merged = new Map<string, ChatConversation>();
+
+    (conversationsData?.conversations || []).forEach((conversation) => {
+      merged.set(conversation.id, conversation);
+    });
+
+    const aiConversation = aiConversationData?.conversation;
+    if (aiConversation?.id) {
+      merged.set(aiConversation.id, aiConversation);
+    }
+
+    const toTimestamp = (value: unknown) => {
+      if (!value) return 0;
+      const timestamp = new Date(value as string | number | Date).getTime();
+      return Number.isNaN(timestamp) ? 0 : timestamp;
+    };
+
+    const isAiConversation = (conversation: ChatConversation) => {
+      const type = String(conversation?.type || "").toLowerCase();
+      return (
+        type === "ai" ||
+        Boolean(conversation?.isAI) ||
+        Boolean(conversation?.isAi) ||
+        Boolean(conversation?.isAiAssistant)
+      );
+    };
+
+    return Array.from(merged.values()).sort((left, right) => {
+      const leftAi = isAiConversation(left) ? 1 : 0;
+      const rightAi = isAiConversation(right) ? 1 : 0;
+
+      if (leftAi !== rightAi) return rightAi - leftAi;
+
+      return toTimestamp(right.updatedAt) - toTimestamp(left.updatedAt);
+    });
+  }, [conversationsData, aiConversationData]);
   const { data: contactsData } = useContacts();
   const contacts = contactsData?.contacts || [];
   const createMutation = useCreateConversation();
@@ -46,14 +91,32 @@ export function ChatSidebar() {
   const normalizedQuery = query.trim().toLowerCase();
 
   const filteredConversations = useMemo(() => {
+    const isAiConversation = (conversation: ChatConversation) => {
+      const type = String(conversation?.type || "").toLowerCase();
+      return (
+        type === "ai" ||
+        Boolean(conversation?.isAI) ||
+        Boolean(conversation?.isAi) ||
+        Boolean(conversation?.isAiAssistant)
+      );
+    };
+
     return conversations.filter((conversation) => {
       const matchType =
-        typeFilter === "all" || conversation.type === typeFilter;
+        typeFilter === "all"
+          ? true
+          : typeFilter === "private"
+            ? conversation.type === "private"
+            : conversation.type === "group";
 
       if (!matchType) return false;
       if (!normalizedQuery) return true;
 
-      const searchable = [conversation.name, conversation.lastMessage?.content]
+      const searchable = [
+        conversation.name,
+        conversation.lastMessage?.content,
+        isAiConversation(conversation) ? "ai chat" : "",
+      ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();

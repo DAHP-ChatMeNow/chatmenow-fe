@@ -13,7 +13,6 @@ import {
   X,
   Play,
 } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -25,6 +24,7 @@ import {
   useLikePost,
   useComments,
   useAddComment,
+  usePostAiChat,
 } from "@/hooks/use-post";
 import {
   useCreateStory,
@@ -38,7 +38,19 @@ import { Post, PostMedia } from "@/types/post";
 import { toast } from "sonner";
 import { PostMediaLightbox } from "@/components/post/post-media-lightbox";
 import { StoryViewer } from "@/components/post/story-viewer";
+import {
+  AiPostChatPopup,
+  type AiPopupMessage,
+} from "@/components/post/ai-post-chat-popup";
+import { AiSuggestion } from "@/api/post";
 import { useRouter, useSearchParams } from "next/navigation";
+
+type AskAiPayload = {
+  content?: string;
+  autoSend?: boolean;
+  action?: string;
+  options?: string[];
+};
 
 type MediaPreview = {
   url: string;
@@ -82,9 +94,21 @@ export default function BlogPage() {
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>(
     {},
   );
+  const [aiSuggestions, setAiSuggestions] = useState<
+    Record<string, AiSuggestion>
+  >({});
+  const [aiPopupOpen, setAiPopupOpen] = useState(false);
+  const [aiPopupPostId, setAiPopupPostId] = useState<string | null>(null);
+  const [aiPopupConversationId, setAiPopupConversationId] = useState<
+    string | undefined
+  >(undefined);
+  const [aiPopupInput, setAiPopupInput] = useState("");
+  const [aiPopupMessages, setAiPopupMessages] = useState<AiPopupMessage[]>([]);
+  const [aiPopupOptions, setAiPopupOptions] = useState<string[]>([]);
   const [isStoryViewerOpen, setIsStoryViewerOpen] = useState(false);
   const [storyViewerGroupIndex, setStoryViewerGroupIndex] = useState(0);
   const storyInputRef = useRef<HTMLInputElement>(null);
+  const aiPendingMessageCounterRef = useRef(0);
   const user = useAuthStore((state) => state.user);
   const currentUserId = user?.id || user?._id;
 
@@ -104,6 +128,7 @@ export default function BlogPage() {
   const { mutate: deleteStory } = useDeleteStory();
   const { mutate: likePost } = useLikePost();
   const { mutate: addComment, isPending: isAddingComment } = useAddComment();
+  const { mutateAsync: askAiFromPost, isPending: isAskingAi } = usePostAiChat();
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(e.target.files || []);
@@ -243,20 +268,146 @@ export default function BlogPage() {
   };
 
   const handleLike = (postId: string, isLiked: boolean) => {
-    likePost({ postId, isLiked });
+    likePost(
+      { postId, isLiked },
+      {
+        onSuccess: (response: { aiSuggestion?: AiSuggestion }) => {
+          if (response.aiSuggestion) {
+            setAiSuggestions((prev) => ({
+              ...prev,
+              [postId]: response.aiSuggestion!,
+            }));
+          }
+        },
+      },
+    );
   };
 
   const handleAddComment = (postId: string) => {
     const content = commentInputs[postId]?.trim();
     if (!content) return;
+
     addComment(
-      { postId, content },
+      {
+        postId,
+        content,
+      },
       {
         onSuccess: () => {
-          setCommentInputs({ ...commentInputs, [postId]: "" });
+          setCommentInputs((prev) => ({ ...prev, [postId]: "" }));
         },
       },
     );
+  };
+
+  const sendAiPopupMessage = async (postId: string, content: string) => {
+    const text = content.trim();
+    if (!text) return;
+    aiPendingMessageCounterRef.current += 1;
+    const pendingMessageId = `pending-${postId}-${aiPendingMessageCounterRef.current}`;
+
+    setAiPopupMessages((prev) => [
+      ...prev,
+      {
+        id: pendingMessageId,
+        role: "user",
+        content: text,
+        status: "pending",
+      },
+    ]);
+    setAiPopupInput("");
+
+    try {
+      const result = await askAiFromPost({
+        postId,
+        content: text,
+        conversationId: aiPopupConversationId,
+      });
+
+      const conversationId = result.conversation?.id || result.conversationId;
+      if (conversationId) {
+        setAiPopupConversationId(conversationId);
+      }
+
+      const userContent = result.userMessage?.content?.trim() || text;
+      const aiContent =
+        result.aiMessage?.content?.trim() || result.reply?.trim();
+
+      setAiPopupMessages((prev) => {
+        const hasPendingMessage = prev.some(
+          (message) => message.id === pendingMessageId,
+        );
+
+        const next = prev.map((message) =>
+          message.id === pendingMessageId
+            ? {
+                ...message,
+                content: userContent || message.content,
+                status: "sent" as const,
+              }
+            : message,
+        );
+
+        if (!hasPendingMessage && userContent) {
+          next.push({ role: "user", content: userContent, status: "sent" });
+        }
+        if (aiContent) {
+          next.push({ role: "ai", content: aiContent, status: "sent" });
+        }
+        return next;
+      });
+
+      if (Array.isArray(result.options)) {
+        setAiPopupOptions(result.options);
+      }
+    } catch {
+      setAiPopupMessages((prev) =>
+        prev.map((message) =>
+          message.id === pendingMessageId
+            ? { ...message, status: "failed" as const }
+            : message,
+        ),
+      );
+    }
+  };
+
+  const openAiPopupWithSuggestion = async (
+    postId: string,
+    ask?: AskAiPayload,
+  ) => {
+    const action = ask?.action || aiSuggestions[postId]?.action;
+    if (action && action !== "ask_ai_in_chat") {
+      toast.error("Hành động AI chưa được hỗ trợ");
+      return;
+    }
+
+    const content = (
+      ask?.content ||
+      aiSuggestions[postId]?.suggestedUserPrompt ||
+      ""
+    ).trim();
+    if (!content) {
+      toast.error("Chưa có nội dung phản hồi AI hợp lệ");
+      return;
+    }
+
+    setAiPopupOpen(true);
+    setAiPopupPostId(postId);
+    setAiPopupConversationId(undefined);
+    setAiPopupMessages([]);
+    setAiPopupOptions(ask?.options || aiSuggestions[postId]?.options || []);
+
+    const shouldAutoSend =
+      typeof ask?.autoSend === "boolean"
+        ? ask.autoSend
+        : aiSuggestions[postId]?.autoSend === true;
+
+    if (shouldAutoSend) {
+      await sendAiPopupMessage(postId, content);
+      return;
+    }
+
+    setAiPopupInput(content);
   };
 
   // Infinite scroll logic
@@ -415,7 +566,7 @@ export default function BlogPage() {
           </div>
 
           {/* Stories */}
-          <div className="p-2 min-w-0 bg-white border shadow-sm rounded-2xl border-slate-100 md:p-4">
+          <div className="min-w-0 p-2 bg-white border shadow-sm rounded-2xl border-slate-100 md:p-4">
             <div className="flex w-full min-w-0 gap-2 pb-2 overflow-x-auto scrollbar-hide">
               {/* Create Story */}
               <button
@@ -536,6 +687,11 @@ export default function BlogPage() {
                     setCommentInputs({ ...commentInputs, [post.id]: value })
                   }
                   onAddComment={() => handleAddComment(post.id)}
+                  fallbackSuggestion={aiSuggestions[post.id]}
+                  onAskAi={(askPayload) =>
+                    openAiPopupWithSuggestion(post.id, askPayload)
+                  }
+                  isAskingAi={isAskingAi}
                   isAddingComment={isAddingComment}
                 />
               ))}
@@ -606,12 +762,36 @@ export default function BlogPage() {
                   setCommentInputs({ ...commentInputs, [popupPost.id]: value })
                 }
                 onAddComment={() => handleAddComment(popupPost.id)}
+                fallbackSuggestion={aiSuggestions[popupPost.id]}
+                onAskAi={(askPayload) =>
+                  openAiPopupWithSuggestion(popupPost.id, askPayload)
+                }
+                isAskingAi={isAskingAi}
                 isAddingComment={isAddingComment}
               />
             </div>
           </div>
         </div>
       ) : null}
+
+      <AiPostChatPopup
+        open={aiPopupOpen}
+        onOpenChange={setAiPopupOpen}
+        title="Phản hồi"
+        messages={aiPopupMessages}
+        inputValue={aiPopupInput}
+        onInputChange={setAiPopupInput}
+        onSend={() => {
+          if (!aiPopupPostId) return;
+          void sendAiPopupMessage(aiPopupPostId, aiPopupInput);
+        }}
+        isSending={isAskingAi}
+        options={aiPopupOptions}
+        onPickOption={(option) => {
+          if (!aiPopupPostId) return;
+          void sendAiPopupMessage(aiPopupPostId, option);
+        }}
+      />
     </div>
   );
 }
@@ -626,6 +806,9 @@ interface ProfilePostCardProps {
   commentInput: string;
   onCommentInputChange: (val: string) => void;
   onAddComment: () => void;
+  fallbackSuggestion?: AiSuggestion;
+  onAskAi: (payload?: AskAiPayload) => void;
+  isAskingAi: boolean;
   isAddingComment: boolean;
 }
 
@@ -749,10 +932,16 @@ function ProfilePostCard({
   commentInput,
   onCommentInputChange,
   onAddComment,
+  fallbackSuggestion,
+  onAskAi,
+  isAskingAi,
   isAddingComment,
 }: ProfilePostCardProps) {
   const { data: commentsData } = useComments(isExpanded ? post.id : "");
-  const comments = commentsData || [];
+  const comments = commentsData?.comments || [];
+  const aiSuggestion = commentsData?.aiSuggestion || fallbackSuggestion;
+  const canAskAiInChat =
+    !aiSuggestion?.action || aiSuggestion.action === "ask_ai_in_chat";
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const likesCount = post.likesCount ?? 0;
   const commentsCount = post.commentsCount ?? 0;
@@ -873,7 +1062,7 @@ function ProfilePostCard({
               />
               <div className="flex-1 min-w-0 px-3 py-2 rounded-2xl bg-slate-100">
                 <p className="text-xs font-semibold text-slate-900">
-                  {c.user?.displayName}
+                  {c.user?.displayName || "User"}
                 </p>
                 <p className="text-sm break-words text-slate-700">
                   {c.content}
@@ -881,6 +1070,57 @@ function ProfilePostCard({
               </div>
             </div>
           ))}
+
+          {aiSuggestion && (
+            <div className="px-3 py-2 border border-blue-100 rounded-xl bg-blue-50">
+              <p className="text-xs font-semibold text-blue-700">Gợi ý AI</p>
+              <p className="mt-1 text-sm text-blue-900">{aiSuggestion.text}</p>
+              {canAskAiInChat && aiSuggestion.options.length > 0 ? (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {aiSuggestion.options.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() =>
+                        onAskAi({
+                          content: option,
+                          autoSend: true,
+                          action: aiSuggestion.action,
+                          options: aiSuggestion.options,
+                        })
+                      }
+                      disabled={isAskingAi}
+                      className="rounded-full border border-blue-200 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              ) : canAskAiInChat ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onAskAi({
+                      content: aiSuggestion.suggestedUserPrompt,
+                      autoSend: aiSuggestion.autoSend,
+                      action: aiSuggestion.action,
+                      options: aiSuggestion.options,
+                    })
+                  }
+                  disabled={isAskingAi}
+                  className="mt-2 text-xs font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-60"
+                >
+                  {isAskingAi ? "Đang gửi AI chat..." : "Phản hồi ngay"}
+                </button>
+              ) : null}
+
+              {!canAskAiInChat ? (
+                <p className="mt-2 text-xs text-blue-600">
+                  Hành động AI chưa được hỗ trợ ở phiên bản này.
+                </p>
+              ) : null}
+            </div>
+          )}
 
           <div className="flex items-center min-w-0 gap-2 pt-1">
             <PresignedAvatar

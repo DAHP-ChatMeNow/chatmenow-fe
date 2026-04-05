@@ -7,7 +7,13 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { postService, CreatePostPayload } from "@/api/post";
+import {
+  postService,
+  CreatePostPayload,
+  AddCommentResult,
+  PostAiChatPayload,
+  AiSuggestion,
+} from "@/api/post";
 import { Post } from "@/types/post";
 import { Comment } from "@/types/comment";
 
@@ -135,45 +141,68 @@ export const useAddComment = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ postId, content }: { postId: string; content: string }) => {
-      return postService.addComment(postId, content);
-    },
-    onSuccess: (newComment) => {
-      // Update comments list
+    mutationFn: ({
+      postId,
+      content,
+      replyToCommentId,
+    }: {
+      postId: string;
+      content: string;
+      replyToCommentId?: string;
+    }) =>
+      postService.addComment(postId, {
+        content,
+        replyToCommentId,
+      }),
+    onSuccess: (result: AddCommentResult) => {
+      // Optimistically append user comments returned by API.
       queryClient.setQueryData(
-        ["comments", newComment.postId],
-        (oldData: Comment[] | undefined) => {
-          return [...(oldData || []), newComment];
+        ["comments", result.postId],
+        (
+          oldData:
+            | { comments: Comment[]; aiSuggestion?: AiSuggestion }
+            | undefined,
+        ) => {
+          const merged = [...(oldData?.comments || []), ...result.comments];
+          const normalized = Array.from(
+            new Map(merged.map((comment) => [comment.id, comment])).values(),
+          );
+          return {
+            comments: normalized,
+            aiSuggestion: oldData?.aiSuggestion,
+          };
         },
       );
 
-      // Update post comments count in feed
-      queryClient.setQueryData(["posts", "feed"], (oldData: any) => {
-        if (!oldData) return oldData;
-
-        const newPages = oldData.pages.map((page: any) => ({
-          ...page,
-          posts: page.posts.map((post: Post) => {
-            if (post.id === newComment.postId) {
-              return {
-                ...post,
-                commentsCount: post.commentsCount + 1,
-              };
-            }
-            return post;
-          }),
-        }));
-
-        return {
-          ...oldData,
-          pages: newPages,
-        };
-      });
+      // Always refetch to receive latest suggestion payload and updated counters.
+      queryClient.invalidateQueries({ queryKey: ["comments", result.postId] });
+      queryClient.invalidateQueries({ queryKey: ["posts", "feed"] });
+      queryClient.invalidateQueries({ queryKey: ["posts", "me"] });
 
       toast.success("Đã bình luận thành công");
     },
     onError: (error: any) => {
       toast.error(error?.response?.data?.message || "Không thể bình luận");
+    },
+  });
+};
+
+export const usePostAiChat = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      postId,
+      ...payload
+    }: { postId: string } & PostAiChatPayload) =>
+      postService.sendPostAiChat(postId, payload),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["ai-conversation"] });
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message || "Không thể gửi câu hỏi tới AI chat",
+      );
     },
   });
 };

@@ -4,10 +4,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   chatService,
+  AiConversationResponse,
   ConversationsResponse,
   MessagesResponse,
   ConversationDetailsResponse,
   GetMessagesParams,
+  SendAiMessagePayload,
 } from "@/api/chat";
 import { userService } from "@/api/user";
 import { Message } from "@/types/message";
@@ -26,6 +28,13 @@ type SendMessageContext = {
   previousConversations?: ConversationsResponse;
   optimisticMessageId: string;
   conversationId: string;
+};
+
+type UpsertConversationPreviewInput = {
+  conversationId: string;
+  content: string;
+  type: string;
+  senderId?: string;
 };
 
 const getMessageSenderId = (message: Message): string | undefined => {
@@ -56,6 +65,106 @@ const isSameOptimisticMessage = (
   );
 };
 
+const createOptimisticMessage = (params: {
+  optimisticMessageId: string;
+  conversationId: string;
+  content: string;
+  type: string;
+  currentUserId?: string;
+  currentUserName: string;
+  currentUserAvatar?: string;
+}): Message => ({
+  id: params.optimisticMessageId,
+  clientTempId: params.optimisticMessageId,
+  conversationId: params.conversationId,
+  senderId: {
+    id: params.currentUserId,
+    _id: params.currentUserId,
+    displayName: params.currentUserName,
+    avatar: params.currentUserAvatar,
+  },
+  content: params.content,
+  type: params.type,
+  createdAt: new Date().toISOString(),
+  status: "sending",
+  isOptimistic: true,
+});
+
+const upsertConversationPreview = (
+  old: ConversationsResponse | undefined,
+  input: UpsertConversationPreviewInput,
+) => {
+  if (!old?.conversations) return old;
+
+  return {
+    ...old,
+    conversations: old.conversations.map((conversation) =>
+      conversation.id === input.conversationId
+        ? {
+            ...conversation,
+            lastMessage: {
+              ...conversation.lastMessage,
+              content: input.content,
+              type: input.type,
+              createdAt: new Date(),
+              senderId: input.senderId,
+            },
+            updatedAt: new Date(),
+          }
+        : conversation,
+    ),
+  };
+};
+
+const mergeUniqueMessages = (messages: Message[]): Message[] => {
+  const messageMap = new Map<string, Message>();
+
+  messages.forEach((message) => {
+    const key =
+      message.id ||
+      message._id ||
+      `${message.conversationId}:${message.type}:${message.content || ""}:${String(message.createdAt)}`;
+    messageMap.set(key, message);
+  });
+
+  return Array.from(messageMap.values());
+};
+
+const updateMessageInCache = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  conversationId: string,
+  messageId: string,
+  updater: (message: Message) => Message,
+) => {
+  queryClient.setQueryData<MessagesResponse>(
+    ["messages", conversationId],
+    (old) => ({
+      ...(old || {}),
+      messages: (old?.messages || []).map((message) => {
+        const currentId = message.id || message._id;
+        return currentId === messageId ? updater(message) : message;
+      }),
+    }),
+  );
+};
+
+const removeMessageFromCache = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  conversationId: string,
+  messageId: string,
+) => {
+  queryClient.setQueryData<MessagesResponse>(
+    ["messages", conversationId],
+    (old) => ({
+      ...(old || {}),
+      messages: (old?.messages || []).filter((message) => {
+        const currentId = message.id || message._id;
+        return currentId !== messageId;
+      }),
+    }),
+  );
+};
+
 export const useConversations = () => {
   return useQuery({
     queryKey: ["conversations"],
@@ -70,6 +179,15 @@ export const useConversation = (conversationId: string) => {
     queryFn: () => chatService.getConversationDetails(conversationId),
     enabled: !!conversationId,
     retry: 1,
+  });
+};
+
+export const useAiConversation = () => {
+  return useQuery({
+    queryKey: ["ai-conversation"],
+    queryFn: (): Promise<AiConversationResponse> =>
+      chatService.getAiConversation(),
+    staleTime: 30_000,
   });
 };
 
@@ -127,22 +245,15 @@ export const useSendMessage = () => {
       const previousConversations =
         queryClient.getQueryData<ConversationsResponse>(["conversations"]);
 
-      const optimisticMessage: Message = {
-        id: optimisticMessageId,
-        clientTempId: optimisticMessageId,
+      const optimisticMessage = createOptimisticMessage({
+        optimisticMessageId,
         conversationId: variables.conversationId,
-        senderId: {
-          id: currentUserId,
-          _id: currentUserId,
-          displayName: currentUserName,
-          avatar: currentUserAvatar,
-        },
         content: variables.content,
         type: variables.type,
-        createdAt: new Date().toISOString(),
-        status: "sending",
-        isOptimistic: true,
-      };
+        currentUserId,
+        currentUserName,
+        currentUserAvatar,
+      });
 
       queryClient.setQueryData<MessagesResponse>(
         ["messages", variables.conversationId],
@@ -154,28 +265,13 @@ export const useSendMessage = () => {
 
       queryClient.setQueryData<ConversationsResponse>(
         ["conversations"],
-        (old) => {
-          if (!old?.conversations) return old;
-
-          return {
-            ...old,
-            conversations: old.conversations.map((conversation) =>
-              conversation.id === variables.conversationId
-                ? {
-                    ...conversation,
-                    lastMessage: {
-                      ...conversation.lastMessage,
-                      content: variables.content,
-                      type: variables.type,
-                      createdAt: new Date(),
-                      senderId: currentUserId,
-                    },
-                    updatedAt: new Date(),
-                  }
-                : conversation,
-            ),
-          };
-        },
+        (old) =>
+          upsertConversationPreview(old, {
+            conversationId: variables.conversationId,
+            content: variables.content,
+            type: variables.type,
+            senderId: currentUserId,
+          }),
       );
 
       return {
@@ -240,6 +336,156 @@ export const useSendMessage = () => {
   });
 };
 
+export const useSendAiMessage = () => {
+  const queryClient = useQueryClient();
+  const user = useAuthStore((state) => state.user);
+  const currentUserId = user?.id || user?._id;
+  const currentUserName = user?.displayName || "Bạn";
+  const currentUserAvatar = user?.avatar;
+
+  return useMutation({
+    mutationFn: (variables: SendAiMessagePayload) =>
+      chatService.sendAiMessage(variables),
+    onMutate: async (variables): Promise<SendMessageContext> => {
+      if (!variables.conversationId) {
+        throw new Error("Thiếu conversationId cho AI chat");
+      }
+
+      const optimisticMessageId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      await queryClient.cancelQueries({
+        queryKey: ["messages", variables.conversationId],
+      });
+      await queryClient.cancelQueries({ queryKey: ["conversations"] });
+
+      const previousMessages = queryClient.getQueryData<MessagesResponse>([
+        "messages",
+        variables.conversationId,
+      ]);
+      const previousConversations =
+        queryClient.getQueryData<ConversationsResponse>(["conversations"]);
+
+      const optimisticMessage = createOptimisticMessage({
+        optimisticMessageId,
+        conversationId: variables.conversationId,
+        content: variables.content,
+        type: "text",
+        currentUserId,
+        currentUserName,
+        currentUserAvatar,
+      });
+
+      queryClient.setQueryData<MessagesResponse>(
+        ["messages", variables.conversationId],
+        (old) => ({
+          ...(old || {}),
+          messages: [...(old?.messages || []), optimisticMessage],
+        }),
+      );
+
+      queryClient.setQueryData<ConversationsResponse>(
+        ["conversations"],
+        (old) =>
+          upsertConversationPreview(old, {
+            conversationId: variables.conversationId!,
+            content: variables.content,
+            type: "text",
+            senderId: currentUserId,
+          }),
+      );
+
+      return {
+        previousMessages,
+        previousConversations,
+        optimisticMessageId,
+        conversationId: variables.conversationId,
+      };
+    },
+    onSuccess: (result, variables, context) => {
+      if (!variables.conversationId) return;
+
+      const responseMessages = (result.messages || []).map((message) => ({
+        ...message,
+        status: "sent" as const,
+        isOptimistic: false,
+      }));
+
+      queryClient.setQueryData<MessagesResponse>(
+        ["messages", variables.conversationId],
+        (old) => {
+          const currentMessages = old?.messages || [];
+          const withoutOptimistic = currentMessages.filter(
+            (message) => message.id !== context?.optimisticMessageId,
+          );
+
+          return {
+            ...(old || {}),
+            messages: mergeUniqueMessages([
+              ...withoutOptimistic,
+              ...responseMessages,
+            ]),
+          };
+        },
+      );
+
+      if (result.conversation) {
+        queryClient.setQueryData(
+          ["conversation", variables.conversationId],
+          result.conversation,
+        );
+        queryClient.setQueryData(["ai-conversation"], {
+          conversation: result.conversation,
+        });
+      }
+
+      const lastResponseMessage =
+        responseMessages[responseMessages.length - 1] ||
+        responseMessages[0] ||
+        null;
+
+      if (lastResponseMessage) {
+        queryClient.setQueryData<ConversationsResponse>(
+          ["conversations"],
+          (old) =>
+            upsertConversationPreview(old, {
+              conversationId: variables.conversationId!,
+              content: lastResponseMessage.content || "",
+              type: lastResponseMessage.type,
+              senderId: getMessageSenderId(lastResponseMessage),
+            }),
+        );
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["ai-conversation"] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+    onError: (error: any, variables, context) => {
+      if (!variables.conversationId) return;
+
+      queryClient.setQueryData<MessagesResponse>(
+        ["messages", variables.conversationId],
+        (old) => ({
+          ...(old || {}),
+          messages: (old?.messages || []).map((message) =>
+            message.id === context?.optimisticMessageId
+              ? {
+                  ...message,
+                  status: "failed",
+                  isOptimistic: true,
+                }
+              : message,
+          ),
+        }),
+      );
+
+      toast.error(
+        error?.response?.data?.message ||
+          "Không thể gửi tin nhắn tới AI lúc này",
+      );
+    },
+  });
+};
+
 export const useGetPrivateConversation = () => {
   return useMutation({
     mutationFn: chatService.getPrivateConversation,
@@ -255,9 +501,15 @@ export const usePrivatePartner = (
   conversation: Conversation | undefined,
   currentUserId: string | undefined,
 ) => {
+  const isAiConversation =
+    String(conversation?.type || "").toLowerCase() === "ai" ||
+    Boolean(conversation?.isAI) ||
+    Boolean(conversation?.isAi) ||
+    Boolean(conversation?.isAiAssistant);
+
   // Lấy partnerId từ members array
   const partnerId =
-    conversation?.type === "private" && currentUserId
+    conversation?.type === "private" && currentUserId && !isAiConversation
       ? conversation.members.find((m) => {
           // Handle cả trường hợp userId là string hoặc object
           const memberUserId =
@@ -278,7 +530,7 @@ export const usePrivatePartner = (
   return useQuery({
     queryKey: ["partner", partnerIdString],
     queryFn: () => userService.getUserProfile(partnerIdString!),
-    enabled: !!partnerIdString,
+    enabled: !!partnerIdString && !isAiConversation,
   });
 };
 
@@ -293,28 +545,60 @@ export const useConversationDisplay = (
   currentUserId: string | undefined,
 ) => {
   const { data: partner } = usePrivatePartner(conversation, currentUserId);
+  const isAiConversation =
+    String(conversation?.type || "").toLowerCase() === "ai" ||
+    Boolean(conversation?.isAI) ||
+    Boolean(conversation?.isAi) ||
+    Boolean(conversation?.isAiAssistant);
+  const shouldUsePartner =
+    conversation?.type === "private" && !isAiConversation;
+
+  const privateMemberFallback =
+    conversation?.type === "private" && currentUserId
+      ? conversation.members.find((member) => {
+          const memberUserId =
+            typeof member.userId === "string"
+              ? member.userId
+              : (member.userId as any)?._id || (member.userId as any)?.id;
+          return !!memberUserId && memberUserId !== currentUserId;
+        })
+      : undefined;
+
+  const privateMemberProfile =
+    privateMemberFallback && typeof privateMemberFallback.userId === "object"
+      ? privateMemberFallback.userId
+      : undefined;
+
+  const aiMember =
+    conversation?.type === "private" && isAiConversation && currentUserId
+      ? conversation.members.find((member) => {
+          const memberUserId =
+            typeof member.userId === "string"
+              ? member.userId
+              : (member.userId as any)?._id || (member.userId as any)?.id;
+          return !!memberUserId && memberUserId !== currentUserId;
+        })
+      : undefined;
+
+  const aiProfile =
+    aiMember && typeof aiMember.userId === "object" ? aiMember.userId : null;
 
   return {
-    displayName:
-      conversation?.type === "private"
-        ? partner?.displayName
-        : conversation?.name,
-    avatar:
-      conversation?.type === "private"
-        ? partner?.avatar
-        : conversation?.groupAvatar,
-    isOnline:
-      conversation?.type === "private" ? (partner?.isOnline ?? false) : false,
-    lastSeenText:
-      conversation?.type === "private" ? partner?.lastSeenText : undefined,
-    statusText:
-      conversation?.type === "private"
-        ? formatPresenceStatus(
-            partner?.isOnline,
-            partner?.lastSeen,
-            partner?.lastSeenText,
-          )
-        : undefined,
+    displayName: shouldUsePartner
+      ? partner?.displayName || (privateMemberProfile as any)?.displayName
+      : conversation?.name || (aiProfile as any)?.displayName,
+    avatar: shouldUsePartner
+      ? partner?.avatar || (privateMemberProfile as any)?.avatar
+      : conversation?.groupAvatar || (aiProfile as any)?.avatar,
+    isOnline: shouldUsePartner ? (partner?.isOnline ?? false) : false,
+    lastSeenText: shouldUsePartner ? partner?.lastSeenText : undefined,
+    statusText: shouldUsePartner
+      ? formatPresenceStatus(
+          partner?.isOnline,
+          partner?.lastSeen,
+          partner?.lastSeenText,
+        )
+      : undefined,
   };
 };
 
@@ -380,6 +664,169 @@ export const useDissolveGroup = () => {
     },
     onError: (error: any) => {
       toast.error(error?.response?.data?.message || "Không thể giải tán nhóm");
+    },
+  });
+};
+
+export const useUnsendMessage = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      messageId,
+    }: {
+      conversationId: string;
+      messageId: string;
+    }) => chatService.unsendMessage(messageId),
+    onMutate: async ({ conversationId, messageId }) => {
+      await queryClient.cancelQueries({
+        queryKey: ["messages", conversationId],
+      });
+      const previousMessages = queryClient.getQueryData<MessagesResponse>([
+        "messages",
+        conversationId,
+      ]);
+
+      updateMessageInCache(
+        queryClient,
+        conversationId,
+        messageId,
+        (message) => ({
+          ...message,
+          content: "Tin nhắn đã được thu hồi",
+          isUnsent: true,
+          unsentAt: new Date().toISOString(),
+        }),
+      );
+
+      return { previousMessages, conversationId };
+    },
+    onSuccess: (updatedMessage, variables) => {
+      updateMessageInCache(
+        queryClient,
+        variables.conversationId,
+        variables.messageId,
+        (message) => ({
+          ...message,
+          ...updatedMessage,
+          status: "sent",
+          isOptimistic: false,
+        }),
+      );
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+    onError: (error: any, variables, context) => {
+      if (context?.previousMessages) {
+        queryClient.setQueryData(
+          ["messages", variables.conversationId],
+          context.previousMessages,
+        );
+      }
+      toast.error(
+        error?.response?.data?.message || "Không thể thu hồi tin nhắn",
+      );
+    },
+  });
+};
+
+export const useDeleteMessageForMe = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      messageId,
+    }: {
+      conversationId: string;
+      messageId: string;
+    }) => chatService.deleteMessageForMe(messageId),
+    onMutate: async ({ conversationId, messageId }) => {
+      await queryClient.cancelQueries({
+        queryKey: ["messages", conversationId],
+      });
+      const previousMessages = queryClient.getQueryData<MessagesResponse>([
+        "messages",
+        conversationId,
+      ]);
+
+      removeMessageFromCache(queryClient, conversationId, messageId);
+      return { previousMessages, conversationId };
+    },
+    onSuccess: (result, variables) => {
+      const conversationId = result.conversationId || variables.conversationId;
+      removeMessageFromCache(queryClient, conversationId, result.messageId);
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+    onError: (error: any, variables, context) => {
+      if (context?.previousMessages) {
+        queryClient.setQueryData(
+          ["messages", variables.conversationId],
+          context.previousMessages,
+        );
+      }
+      toast.error(
+        error?.response?.data?.message || "Không thể xóa tin nhắn phía bạn",
+      );
+    },
+  });
+};
+
+export const useEditMessage = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      messageId,
+      content,
+    }: {
+      conversationId: string;
+      messageId: string;
+      content: string;
+    }) => chatService.editMessage(messageId, content),
+    onMutate: async ({ conversationId, messageId, content }) => {
+      await queryClient.cancelQueries({
+        queryKey: ["messages", conversationId],
+      });
+      const previousMessages = queryClient.getQueryData<MessagesResponse>([
+        "messages",
+        conversationId,
+      ]);
+
+      updateMessageInCache(
+        queryClient,
+        conversationId,
+        messageId,
+        (message) => ({
+          ...message,
+          content,
+          isEdited: true,
+          editedAt: new Date().toISOString(),
+        }),
+      );
+
+      return { previousMessages, conversationId };
+    },
+    onSuccess: (updatedMessage, variables) => {
+      updateMessageInCache(
+        queryClient,
+        variables.conversationId,
+        variables.messageId,
+        (message) => ({
+          ...message,
+          ...updatedMessage,
+          status: "sent",
+          isOptimistic: false,
+        }),
+      );
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+    onError: (error: any, variables, context) => {
+      if (context?.previousMessages) {
+        queryClient.setQueryData(
+          ["messages", variables.conversationId],
+          context.previousMessages,
+        );
+      }
+      toast.error(error?.response?.data?.message || "Không thể sửa tin nhắn");
     },
   });
 };

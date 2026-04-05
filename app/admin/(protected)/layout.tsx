@@ -3,13 +3,14 @@
 import { useAuthStore } from "@/store/use-auth-store";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
-import { Users, Newspaper, LogOut, ShieldCheck } from "lucide-react";
+import { Users, Newspaper, Bot, LogOut, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { icon: Users, label: "Người dùng", path: "/admin/users" },
   { icon: Newspaper, label: "Bài viết", path: "/admin/posts" },
+  { icon: Bot, label: "AI Chat", path: "/admin/ai" },
 ];
 
 export default function AdminProtectedLayout({

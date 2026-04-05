@@ -43,10 +43,16 @@ import {
   useLikePost,
   useComments,
   useAddComment,
+  usePostAiChat,
 } from "@/hooks/use-post";
+import {
+  AiPostChatPopup,
+  type AiPopupMessage,
+} from "@/components/post/ai-post-chat-popup";
 import { BlogSkeleton } from "@/components/skeletons/blog-skeleton";
 import { useLanguage } from "@/contexts/language-context";
 import { Post, PostMedia } from "@/types/post";
+import { AiSuggestion } from "@/api/post";
 import { formatPresenceStatus } from "@/lib/utils";
 import { PostMediaLightbox } from "@/components/post/post-media-lightbox";
 
@@ -81,6 +87,17 @@ export default function ProfilePage() {
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>(
     {},
   );
+  const [aiSuggestions, setAiSuggestions] = useState<
+    Record<string, AiSuggestion>
+  >({});
+  const [aiPopupOpen, setAiPopupOpen] = useState(false);
+  const [aiPopupPostId, setAiPopupPostId] = useState<string | null>(null);
+  const [aiPopupConversationId, setAiPopupConversationId] = useState<
+    string | undefined
+  >(undefined);
+  const [aiPopupInput, setAiPopupInput] = useState("");
+  const [aiPopupMessages, setAiPopupMessages] = useState<AiPopupMessage[]>([]);
+  const [aiPopupOptions, setAiPopupOptions] = useState<string[]>([]);
 
   const handleAvatarClick = () => {
     avatarInputRef.current?.click();
@@ -130,17 +147,34 @@ export default function ProfilePage() {
   };
 
   const handleLike = (postId: string, isLiked: boolean) => {
-    likePost({ postId, isLiked });
+    likePost(
+      { postId, isLiked },
+      {
+        onSuccess: (response: { aiSuggestion?: AiSuggestion }) => {
+          if (response.aiSuggestion) {
+            setAiSuggestions((prev) => ({
+              ...prev,
+              [postId]: response.aiSuggestion!,
+            }));
+          }
+        },
+      },
+    );
   };
 
   const handleAddComment = (postId: string) => {
     const content = commentInputs[postId]?.trim();
     if (!content) return;
+
     addComment(
-      { postId, content },
       {
-        onSuccess: () =>
-          setCommentInputs((prev) => ({ ...prev, [postId]: "" })),
+        postId,
+        content,
+      },
+      {
+        onSuccess: () => {
+          setCommentInputs((prev) => ({ ...prev, [postId]: "" }));
+        },
       },
     );
   };
@@ -152,6 +186,56 @@ export default function ProfilePage() {
   );
 
   const { mutate: addComment, isPending: isAddingComment } = useAddComment();
+  const { mutateAsync: askAiFromPost, isPending: isAskingAi } = usePostAiChat();
+
+  const sendAiPopupMessage = async (postId: string, content: string) => {
+    const text = content.trim();
+    if (!text) return;
+
+    setAiPopupMessages((prev) => [...prev, { role: "user", content: text }]);
+    setAiPopupInput("");
+
+    try {
+      const result = await askAiFromPost({
+        postId,
+        content: text,
+        conversationId: aiPopupConversationId,
+      });
+
+      if (result.conversationId) {
+        setAiPopupConversationId(result.conversationId);
+      }
+
+      if (result.reply) {
+        setAiPopupMessages((prev) => [
+          ...prev,
+          { role: "ai", content: result.reply! },
+        ]);
+      }
+
+      if (Array.isArray(result.options)) {
+        setAiPopupOptions(result.options);
+      }
+    } catch {
+      // Error toast handled in hook.
+    }
+  };
+
+  const openAiPopupWithSuggestion = async (
+    postId: string,
+    suggestion?: string,
+  ) => {
+    const content = (suggestion || aiSuggestions[postId]?.text || "").trim();
+    if (!content) return;
+
+    setAiPopupOpen(true);
+    setAiPopupPostId(postId);
+    setAiPopupConversationId(undefined);
+    setAiPopupMessages([]);
+    setAiPopupOptions(aiSuggestions[postId]?.options || []);
+
+    await sendAiPopupMessage(postId, content);
+  };
 
   if (!user) return null;
 
@@ -315,6 +399,11 @@ export default function ProfilePage() {
                       setCommentInputs((prev) => ({ ...prev, [post.id]: val }))
                     }
                     onAddComment={() => handleAddComment(post.id)}
+                    fallbackSuggestion={aiSuggestions[post.id]}
+                    onAskAi={(suggestion) =>
+                      openAiPopupWithSuggestion(post.id, suggestion)
+                    }
+                    isAskingAi={isAskingAi}
                     isAddingComment={isAddingComment}
                   />
                 ))}
@@ -463,6 +552,25 @@ export default function ProfilePage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AiPostChatPopup
+        open={aiPopupOpen}
+        onOpenChange={setAiPopupOpen}
+        title="Phản hồi"
+        messages={aiPopupMessages}
+        inputValue={aiPopupInput}
+        onInputChange={setAiPopupInput}
+        onSend={() => {
+          if (!aiPopupPostId) return;
+          void sendAiPopupMessage(aiPopupPostId, aiPopupInput);
+        }}
+        isSending={isAskingAi}
+        options={aiPopupOptions}
+        onPickOption={(option) => {
+          if (!aiPopupPostId) return;
+          void sendAiPopupMessage(aiPopupPostId, option);
+        }}
+      />
     </div>
   );
 }
@@ -585,6 +693,9 @@ interface ProfilePostCardProps {
   commentInput: string;
   onCommentInputChange: (val: string) => void;
   onAddComment: () => void;
+  fallbackSuggestion?: AiSuggestion;
+  onAskAi: (suggestion?: string) => void;
+  isAskingAi: boolean;
   isAddingComment: boolean;
 }
 
@@ -598,10 +709,14 @@ function ProfilePostCard({
   commentInput,
   onCommentInputChange,
   onAddComment,
+  fallbackSuggestion,
+  onAskAi,
+  isAskingAi,
   isAddingComment,
 }: ProfilePostCardProps) {
   const { data: commentsData } = useComments(isExpanded ? post.id : "");
-  const comments = commentsData || [];
+  const comments = commentsData?.comments || [];
+  const aiSuggestion = commentsData?.aiSuggestion || fallbackSuggestion;
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const likesCount = post.likesCount ?? 0;
   const commentsCount = post.commentsCount ?? 0;
@@ -731,7 +846,7 @@ function ProfilePostCard({
               />
               <div className="flex-1 px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded-2xl">
                 <p className="text-xs font-semibold text-slate-900 dark:text-white">
-                  {c.user?.displayName}
+                  {c.user?.displayName || "User"}
                 </p>
                 <p className="text-sm text-slate-700 dark:text-slate-300">
                   {c.content}
@@ -739,6 +854,41 @@ function ProfilePostCard({
               </div>
             </div>
           ))}
+
+          {aiSuggestion && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 dark:border-blue-800 dark:bg-blue-900/20">
+              <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">
+                Gợi ý AI
+              </p>
+              <p className="mt-1 text-sm text-blue-900 dark:text-blue-100">
+                {aiSuggestion.text}
+              </p>
+              {aiSuggestion.options.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {aiSuggestion.options.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => onAskAi(option)}
+                      disabled={isAskingAi}
+                      className="rounded-full border border-blue-200 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60 dark:border-blue-700 dark:bg-slate-800 dark:text-blue-300"
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onAskAi(aiSuggestion.text)}
+                  disabled={isAskingAi}
+                  className="mt-2 text-xs font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-60 dark:text-blue-300"
+                >
+                  {isAskingAi ? "Dang gui AI chat..." : "Phản hồi ngay"}
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Input */}
           <div className="flex items-center gap-2 pt-1">

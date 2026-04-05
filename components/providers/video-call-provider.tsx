@@ -97,6 +97,8 @@ interface LivekitTokenResponse {
   expiresIn?: number;
 }
 
+type CallDebugMeta = Record<string, unknown>;
+
 const VideoCallContext = createContext<VideoCallContextType | null>(null);
 
 const ROOM_ID_REGEX = /^[A-Za-z0-9_-]+$/;
@@ -317,8 +319,24 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
   const incomingCallRef = useRef<IncomingCallData | null>(null);
 
   const isCallEnabled = process.env.NEXT_PUBLIC_ENABLE_CALL === "true";
+  const isCallDebugEnabled = process.env.NEXT_PUBLIC_CALL_DEBUG === "true";
   const livekitEnvUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
   const apiKey = process.env.NEXT_PUBLIC_API_KEY;
+
+  const callDebug = useCallback(
+    (event: string, meta?: CallDebugMeta) => {
+      if (!isCallDebugEnabled) return;
+
+      const now = new Date().toISOString();
+      console.info(`[CallDebug ${now}] ${event}`, {
+        phase,
+        activeRoomId: activeCallRef.current?.roomId,
+        incomingRoomId: incomingCallRef.current?.roomId,
+        ...meta,
+      });
+    },
+    [isCallDebugEnabled, phase],
+  );
 
   useEffect(() => {
     activeCallRef.current = activeCall;
@@ -345,16 +363,25 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(timerId);
   }, [startedAt]);
 
-  const cleanupRoom = useCallback(() => {
-    const room = roomRef.current;
-    if (room) {
-      room.removeAllListeners();
-      room.disconnect();
-      roomRef.current = null;
-    }
+  const cleanupRoom = useCallback(
+    (source = "unknown", meta?: CallDebugMeta) => {
+      const room = roomRef.current;
+      if (room) {
+        callDebug("cleanupRoom:disconnect", {
+          source,
+          roomName: room.name,
+          participantIdentity: room.localParticipant.identity,
+          ...meta,
+        });
+        room.removeAllListeners();
+        room.disconnect();
+        roomRef.current = null;
+      }
 
-    remoteTracksRef.current.clear();
-  }, []);
+      remoteTracksRef.current.clear();
+    },
+    [callDebug],
+  );
 
   const stopStreams = useCallback(() => {
     setLocalStream(null);
@@ -373,11 +400,18 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
     setDurationSeconds(0);
   }, []);
 
-  const leaveRoomAndReset = useCallback(() => {
-    cleanupRoom();
-    stopStreams();
-    resetCallState();
-  }, [cleanupRoom, resetCallState, stopStreams]);
+  const leaveRoomAndReset = useCallback(
+    (source = "unknown", meta?: CallDebugMeta) => {
+      callDebug("leaveRoomAndReset", {
+        source,
+        ...meta,
+      });
+      cleanupRoom(source, meta);
+      stopStreams();
+      resetCallState();
+    },
+    [callDebug, cleanupRoom, resetCallState, stopStreams],
+  );
 
   const markCallStarted = useCallback(() => {
     setStartedAt((prev) => prev || Date.now());
@@ -503,6 +537,12 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
         throw new Error("Call feature dang tat o moi truong hien tai");
       }
 
+      callDebug("connectToLivekitRoom:start", {
+        roomId: call.roomId,
+        callType: call.callType,
+        isCaller: call.isCaller,
+      });
+
       const tokenData = await getLivekitToken(call.roomId);
       const livekitUrl = livekitEnvUrl || tokenData.livekitUrl;
 
@@ -510,7 +550,9 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
         throw new Error("Missing NEXT_PUBLIC_LIVEKIT_URL");
       }
 
-      cleanupRoom();
+      cleanupRoom("connectToLivekitRoom:preconnect_cleanup", {
+        roomId: call.roomId,
+      });
       stopStreams();
       setPhase("connecting");
 
@@ -525,7 +567,10 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
       room.on(
         RoomEvent.TrackSubscribed,
         (track: RemoteTrack, publication: RemoteTrackPublication) => {
-          if (track.kind !== Track.Kind.Audio && track.kind !== Track.Kind.Video) {
+          if (
+            track.kind !== Track.Kind.Audio &&
+            track.kind !== Track.Kind.Video
+          ) {
             return;
           }
 
@@ -551,18 +596,31 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
       room.on(RoomEvent.ParticipantDisconnected, () => {
         if (room.remoteParticipants.size > 0) return;
         toast.info("Call ended");
-        leaveRoomAndReset();
+        leaveRoomAndReset("room:participant_disconnected_empty", {
+          roomId: call.roomId,
+        });
       });
 
       room.on(RoomEvent.Disconnected, () => {
+        callDebug("room:disconnected", {
+          roomId: call.roomId,
+        });
         remoteTracksRef.current.clear();
         setRemoteStream(null);
         setRemoteHasVideo(false);
       });
 
       await room.connect(livekitUrl, tokenData.token);
+      callDebug("connectToLivekitRoom:connected", {
+        roomId: call.roomId,
+        livekitUrl,
+      });
       await room.localParticipant.setMicrophoneEnabled(true);
       await room.localParticipant.setCameraEnabled(call.callType === "video");
+      callDebug("connectToLivekitRoom:local_media_enabled", {
+        roomId: call.roomId,
+        callType: call.callType,
+      });
 
       syncLocalStreamFromRoom(call.callType);
     },
@@ -624,10 +682,17 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
         });
 
         toast.success("Calling...");
+        callDebug("startCall:signal_sent", {
+          roomId,
+          receiverId,
+          callType,
+        });
       } catch (error) {
         console.error("startCall error:", error);
         toast.error(getErrorMessage(error, "Unable to start call"));
-        leaveRoomAndReset();
+        leaveRoomAndReset("startCall:error", {
+          message: getErrorMessage(error, "Unable to start call"),
+        });
       }
     },
     [
@@ -669,7 +734,9 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("acceptIncomingCall error:", error);
       toast.error(getErrorMessage(error, "Unable to accept call"));
-      leaveRoomAndReset();
+      leaveRoomAndReset("acceptIncomingCall:error", {
+        message: getErrorMessage(error, "Unable to accept call"),
+      });
     }
   }, [connectToLivekitRoom, emitSignal, leaveRoomAndReset, myUserId]);
 
@@ -689,7 +756,9 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         console.error("rejectIncomingCall error:", error);
       } finally {
-        leaveRoomAndReset();
+        leaveRoomAndReset("rejectIncomingCall:finally", {
+          reason,
+        });
       }
     },
     [emitSignal, leaveRoomAndReset],
@@ -712,7 +781,9 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("endCall error:", error);
     } finally {
-      leaveRoomAndReset();
+      leaveRoomAndReset("endCall:finally", {
+        phase,
+      });
     }
   }, [emitSignal, leaveRoomAndReset, phase]);
 
@@ -761,7 +832,16 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
       const call = parseIncomingCall(payload);
       if (!call || call.callerId === myUserId) return;
 
+      callDebug("socket:incoming-call", {
+        roomId: call.roomId,
+        callerId: call.callerId,
+        conversationId: call.conversationId,
+      });
+
       if (activeCallRef.current || incomingCallRef.current) {
+        callDebug("socket:incoming-call:auto_reject_busy", {
+          roomId: call.roomId,
+        });
         emitSignal("reject-call", {
           toUserId: call.callerId,
           roomId: call.roomId,
@@ -782,7 +862,16 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
       const roomId = getRoomId(payload);
       const current = activeCallRef.current;
 
-      if (!current || !current.isCaller || !roomId || current.roomId !== roomId) {
+      callDebug("socket:call-accepted", {
+        roomId,
+      });
+
+      if (
+        !current ||
+        !current.isCaller ||
+        !roomId ||
+        current.roomId !== roomId
+      ) {
         return;
       }
 
@@ -797,7 +886,9 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
         toast.error(
           getErrorMessage(error, "Unable to connect to LiveKit room"),
         );
-        leaveRoomAndReset();
+        leaveRoomAndReset("socket:call-accepted:error", {
+          message: getErrorMessage(error, "Unable to connect to LiveKit room"),
+        });
       }
     };
 
@@ -805,6 +896,11 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
       const payload = normalizeSignalPayload(rawPayload);
       const roomId = getRoomId(payload);
       if (!roomId) return;
+
+      callDebug("socket:call-rejected", {
+        roomId,
+        reason: payload.reason,
+      });
 
       const activeMatches = activeCallRef.current?.roomId === roomId;
       const incomingMatches = incomingCallRef.current?.roomId === roomId;
@@ -815,7 +911,9 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
         (payload.rejectionReason as string | undefined) ||
         "declined";
 
-      leaveRoomAndReset();
+      leaveRoomAndReset("socket:call-rejected", {
+        reason,
+      });
 
       if (reason === "missed") {
         toast.info("Call missed");
@@ -834,6 +932,12 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
       const activeRoomId = activeCallRef.current?.roomId;
       const incomingRoomId = incomingCallRef.current?.roomId;
 
+      callDebug("socket:call-error", {
+        roomId,
+        activeRoomId,
+        incomingRoomId,
+      });
+
       if (roomId && roomId !== activeRoomId && roomId !== incomingRoomId) {
         return;
       }
@@ -844,7 +948,9 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
         "Call error";
 
       toast.error(message);
-      leaveRoomAndReset();
+      leaveRoomAndReset("socket:call-error", {
+        message,
+      });
     };
 
     socketInstance.on("incoming-call", onIncomingCall);
@@ -877,7 +983,7 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     return () => {
-      cleanupRoom();
+      cleanupRoom("provider:unmount");
       stopStreams();
     };
   }, [cleanupRoom, stopStreams]);
@@ -957,7 +1063,9 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
           <AudioElement stream={remoteStream} />
           <div className="relative w-full h-full">
             <div className="absolute inset-0 bg-slate-900">
-              {activeCall.callType === "video" && remoteStream && remoteHasVideo ? (
+              {activeCall.callType === "video" &&
+              remoteStream &&
+              remoteHasVideo ? (
                 <VideoElement
                   stream={remoteStream}
                   className="object-cover w-full h-full"

@@ -24,6 +24,21 @@ const formatLastMessagePreview = (conversation: Conversation): string => {
   return lastMessage.content || "Chưa có tin nhắn";
 };
 
+const isAiConversation = (conversation: Conversation): boolean => {
+  const extra = conversation as Conversation & {
+    isAI?: boolean;
+    isAi?: boolean;
+    isAiAssistant?: boolean;
+  };
+  const type = String(conversation.type || "").toLowerCase();
+  return (
+    type === "ai" ||
+    Boolean(extra.isAI) ||
+    Boolean(extra.isAi) ||
+    Boolean(extra.isAiAssistant)
+  );
+};
+
 export function ConversationItemDisplay({
   conversation,
   currentUserId,
@@ -37,13 +52,19 @@ export function ConversationItemDisplay({
     conversation,
     currentUserId,
   );
+  const isAi = isAiConversation(conversation);
+
+  const fallbackName = isAi ? "Chat AI" : "Unknown";
+  const fallbackLastMessage = isAi
+    ? "Bắt đầu hỏi AI về bất kỳ chủ đề nào"
+    : "Chưa có tin nhắn";
 
   return (
     <ChatItem
       id={conversation.id}
       avatar={avatar}
-      name={displayName || "Unknown"}
-      lastMsg={formatLastMessagePreview(conversation)}
+      name={displayName || conversation.name || fallbackName}
+      lastMsg={formatLastMessagePreview(conversation) || fallbackLastMessage}
       time={formatMessageTime(conversation.lastMessage?.createdAt)}
       unread={0}
       isActive={isActive}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { type Dispatch, type SetStateAction, useMemo, useState } from "react";
 import {
   ChevronLeft,
   Phone,
@@ -18,7 +18,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { useRouter, useParams } from "next/navigation";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -54,8 +54,44 @@ import { useAuthStore } from "@/store/use-auth-store";
 import { useContacts, useRemoveFriend } from "@/hooks/use-contact";
 import { useCreateConversation } from "@/hooks/use-chat";
 import { useVideoCall } from "@/components/providers/video-call-provider";
+import { Conversation, ConversationMember } from "@/types/conversation";
+import { Message, MessageAttachment } from "@/types/message";
+import { User } from "@/types/user";
 
 type ChatBackgroundKey = "default" | "sky" | "sunset" | "mint" | "night";
+
+type ChatMemberUser =
+  | string
+  | {
+      _id?: string;
+      id?: string;
+      displayName?: string;
+      avatar?: string;
+    };
+
+type ChatConversationMember = Omit<ConversationMember, "userId"> & {
+  userId: ChatMemberUser;
+};
+
+type ChatConversation = Omit<Conversation, "members"> & {
+  members: ChatConversationMember[];
+};
+
+type GroupMemberView = {
+  userId: string;
+  displayName: string;
+  avatar: string;
+  role: string;
+};
+
+const URL_REGEX = /(https?:\/\/[^\s]+)/gi;
+
+const getMemberUserId = (
+  member: ChatConversationMember,
+): string | undefined => {
+  if (typeof member.userId === "string") return member.userId;
+  return member.userId?._id || member.userId?.id;
+};
 
 const CHAT_BACKGROUND_OPTIONS: Array<{
   key: ChatBackgroundKey;
@@ -129,7 +165,6 @@ export function ChatHeader({
   const [backgroundOpen, setBackgroundOpen] = useState(false);
   const [selectedBackground, setSelectedBackground] =
     useState<ChatBackgroundKey>("default");
-  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [dissolveConfirmOpen, setDissolveConfirmOpen] = useState(false);
 
   const addMemberMutation = useAddMemberToGroup();
@@ -140,11 +175,10 @@ export function ChatHeader({
   const partnerId = useMemo(() => {
     if (!conversation || conversation.type !== "private" || !currentUserId)
       return undefined;
-    const partnerMember = conversation.members.find((m: any) => {
-      const memberUserId =
-        typeof m.userId === "string" ? m.userId : m.userId?._id || m.userId?.id;
-      return memberUserId !== currentUserId;
-    });
+    const typedConversation = conversation as ChatConversation;
+    const partnerMember = typedConversation.members.find(
+      (member) => getMemberUserId(member) !== currentUserId,
+    );
     if (!partnerMember) return undefined;
     return typeof partnerMember.userId === "string"
       ? partnerMember.userId
@@ -155,11 +189,10 @@ export function ChatHeader({
   const isAdmin = useMemo(() => {
     if (!conversation || conversation.type !== "group" || !currentUserId)
       return false;
-    const member = conversation.members.find((m: any) => {
-      const memberUserId =
-        typeof m.userId === "string" ? m.userId : m.userId?._id || m.userId?.id;
-      return memberUserId === currentUserId;
-    });
+    const typedConversation = conversation as ChatConversation;
+    const member = typedConversation.members.find(
+      (m) => getMemberUserId(m) === currentUserId,
+    );
     return member?.role === "admin";
   }, [conversation, currentUserId]);
 
@@ -167,35 +200,62 @@ export function ChatHeader({
   const groupMembers = useMemo(() => {
     if (!conversation || conversation.type !== "group" || !currentUserId)
       return [];
-    return conversation.members
-      .filter((m: any) => {
-        const memberUserId =
-          typeof m.userId === "string"
-            ? m.userId
-            : m.userId?._id || m.userId?.id;
-        return memberUserId !== currentUserId;
+    const typedConversation = conversation as ChatConversation;
+    return typedConversation.members
+      .filter((member) => getMemberUserId(member) !== currentUserId)
+      .map((member): GroupMemberView => {
+        const userId = getMemberUserId(member) || "";
+        const profile =
+          typeof member.userId === "string" ? undefined : member.userId;
+
+        return {
+          userId,
+          displayName: profile?.displayName || "Unknown",
+          avatar: profile?.avatar || "",
+          role: member.role,
+        };
       })
-      .map((m: any) => ({
-        userId:
-          typeof m.userId === "string"
-            ? m.userId
-            : m.userId?._id || m.userId?.id,
-        displayName:
-          typeof m.userId === "string"
-            ? "Unknown"
-            : m.userId?.displayName || "Unknown",
-        avatar: typeof m.userId === "string" ? "" : m.userId?.avatar || "",
-        role: m.role,
-      }));
+      .filter((member) => Boolean(member.userId));
   }, [conversation, currentUserId]);
 
-  const displayName = name || "Chat";
+  const displayName = useMemo(() => {
+    if (name) return name;
+    if (conversation?.name) return conversation.name;
+
+    if (conversation?.type === "private" && currentUserId) {
+      const typedConversation = conversation as ChatConversation;
+      const partnerMember = typedConversation.members.find(
+        (member) => getMemberUserId(member) !== currentUserId,
+      );
+
+      if (partnerMember && typeof partnerMember.userId === "object") {
+        return partnerMember.userId?.displayName || "Chat";
+      }
+    }
+
+    return "Chat";
+  }, [name, conversation, currentUserId]);
+
+  const headerAvatarKey = useMemo(() => {
+    if (avatar) return avatar;
+    if (conversation?.groupAvatar) return conversation.groupAvatar;
+
+    if (conversation?.type === "private" && currentUserId) {
+      const typedConversation = conversation as ChatConversation;
+      const partnerMember = typedConversation.members.find(
+        (member) => getMemberUserId(member) !== currentUserId,
+      );
+
+      if (partnerMember && typeof partnerMember.userId === "object") {
+        return partnerMember.userId?.avatar || "";
+      }
+    }
+
+    return "";
+  }, [avatar, conversation, currentUserId]);
   const isCallEnabled = process.env.NEXT_PUBLIC_ENABLE_CALL === "true";
   const canCall =
-    isCallEnabled &&
-    conversation?.type === "private" &&
-    !!partnerId &&
-    !isBusy;
+    isCallEnabled && conversation?.type === "private" && !!partnerId && !isBusy;
 
   const handleStartCall = async (callType: "audio" | "video") => {
     if (!partnerId || !canCall) return;
@@ -266,12 +326,12 @@ export function ChatHeader({
             </button>
 
             <div className="relative shrink-0">
-              <Avatar className="border-2 border-white shadow-lg h-11 w-11 md:h-12 md:w-12 ring-1 ring-slate-100">
-                <AvatarImage src={avatar} />
-                <AvatarFallback className="font-bold text-white bg-gradient-to-br from-blue-400 to-blue-600">
-                  {(displayName || "U").charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
+              <PresignedAvatar
+                avatarKey={headerAvatarKey}
+                displayName={displayName}
+                className="border-2 border-white shadow-lg h-11 w-11 md:h-12 md:w-12 ring-1 ring-slate-100"
+                fallbackClassName="font-bold text-white bg-gradient-to-br from-blue-400 to-blue-600"
+              />
               {isOnline && (
                 <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full shadow-sm" />
               )}
@@ -319,7 +379,7 @@ export function ChatHeader({
                 sideOffset={8}
                 className="w-64 rounded-xl border-slate-200/80 bg-white/95 backdrop-blur-md shadow-xl p-1.5"
               >
-                <DropdownMenuLabel className="px-3 py-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                <DropdownMenuLabel className="px-3 py-2 text-xs font-semibold tracking-wide uppercase text-slate-500">
                   Tùy chọn chat
                 </DropdownMenuLabel>
                 <DropdownMenuItem
@@ -481,7 +541,6 @@ export function ChatHeader({
         open={inviteOpen}
         onOpenChange={setInviteOpen}
         contacts={contacts}
-        conversationId={currentId || ""}
         selectedIds={inviteSelectedIds}
         setSelectedIds={setInviteSelectedIds}
         onInvite={() => {
@@ -503,17 +562,9 @@ export function ChatHeader({
         onOpenChange={setManageOpen}
         members={groupMembers}
         isAdmin={isAdmin}
-        conversationId={currentId || ""}
         onRemoveMember={(memberId) => {
           if (!currentId) return;
-          removeMemberMutation.mutate(
-            { conversationId: currentId, memberId },
-            {
-              onSuccess: () => {
-                setSelectedMemberId(null);
-              },
-            },
-          );
+          removeMemberMutation.mutate({ conversationId: currentId, memberId });
         }}
         removing={removeMemberMutation.isPending}
       />
@@ -586,7 +637,7 @@ export function ChatHeader({
                     {option.label}
                   </span>
                   {isSelected && (
-                    <span className="absolute top-2 right-2 p-1 rounded-full bg-blue-600 text-white">
+                    <span className="absolute p-1 text-white bg-blue-600 rounded-full top-2 right-2">
                       <Check className="w-3 h-3" />
                     </span>
                   )}
@@ -613,25 +664,24 @@ function MessagesSideSheet({
   open: boolean;
   onOpenChange: (o: boolean) => void;
   tab: "media" | "links" | "search";
-  messages: any[];
+  messages: Message[];
   searchQuery: string;
   onSearchQueryChange: (v: string) => void;
   title: string;
 }) {
-  const urlRegex = /(https?:\/\/[^\s]+)/gi;
   const mediaMsgs = useMemo(
     () =>
       messages.filter(
         (m) =>
           m.type === "image" ||
-          (m.attachments || []).some((a: any) =>
+          (m.attachments || []).some((a: MessageAttachment) =>
             (a.fileType || "").startsWith("image"),
           ),
       ),
     [messages],
   );
   const linkMsgs = useMemo(
-    () => messages.filter((m) => (m.content || "").match(urlRegex)),
+    () => messages.filter((m) => (m.content || "").match(URL_REGEX)),
     [messages],
   );
   const searchMsgs = useMemo(() => {
@@ -665,8 +715,9 @@ function MessagesSideSheet({
                 <div className="text-sm text-slate-500">Chưa có hình ảnh</div>
               ) : (
                 mediaMsgs.map((m, idx) => {
-                  const img = (m.attachments || []).find((a: any) =>
-                    (a.fileType || "").startsWith("image"),
+                  const img = (m.attachments || []).find(
+                    (a: MessageAttachment) =>
+                      (a.fileType || "").startsWith("image"),
                   );
                   const src = img?.url || m.content;
                   return (
@@ -687,7 +738,7 @@ function MessagesSideSheet({
                 <div className="text-sm text-slate-500">Chưa có liên kết</div>
               ) : (
                 linkMsgs.map((m, idx) => {
-                  const links = ((m.content || "").match(urlRegex) ||
+                  const links = ((m.content || "").match(URL_REGEX) ||
                     []) as string[];
                   return (
                     <div key={m.id || idx} className="p-2 border rounded-md">
@@ -751,11 +802,11 @@ function CreateGroupWithPartnerDialog({
   open: boolean;
   onOpenChange: (o: boolean) => void;
   partnerId?: string;
-  contacts: any[];
+  contacts: User[];
   groupName: string;
   onGroupNameChange: (v: string) => void;
   selectedIds: string[];
-  setSelectedIds: (updater: any) => void;
+  setSelectedIds: Dispatch<SetStateAction<string[]>>;
   onCreate: () => void;
   creating: boolean;
 }) {
@@ -790,7 +841,7 @@ function CreateGroupWithPartnerDialog({
                 </label>
               )}
               {contacts.map((c) => {
-                const id = (c as any)._id || c.id;
+                const id = c._id || c.id;
                 const checked = selectedIds.includes(id);
                 return (
                   <label
@@ -854,7 +905,6 @@ function InviteMembersDialog({
   open,
   onOpenChange,
   contacts,
-  conversationId,
   selectedIds,
   setSelectedIds,
   onInvite,
@@ -862,10 +912,9 @@ function InviteMembersDialog({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  contacts: any[];
-  conversationId: string;
+  contacts: User[];
   selectedIds: string[];
-  setSelectedIds: (updater: any) => void;
+  setSelectedIds: Dispatch<SetStateAction<string[]>>;
   onInvite: () => void;
   inviting: boolean;
 }) {
@@ -884,7 +933,7 @@ function InviteMembersDialog({
               <div className="p-3 text-sm text-slate-500">Chưa có danh bạ</div>
             ) : (
               contacts.map((c) => {
-                const id = (c as any)._id || c.id;
+                const id = c._id || c.id;
                 const checked = selectedIds.includes(id);
                 return (
                   <label
@@ -949,15 +998,13 @@ function ManageMembersDialog({
   onOpenChange,
   members,
   isAdmin,
-  conversationId,
   onRemoveMember,
   removing,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  members: any[];
+  members: GroupMemberView[];
   isAdmin: boolean;
-  conversationId: string;
   onRemoveMember: (memberId: string) => void;
   removing: boolean;
 }) {

@@ -1,14 +1,25 @@
 "use client";
 
-import { useRef, useEffect, useState, useCallback } from "react";
-import { PhoneCall, PhoneMissed, PhoneOff } from "lucide-react";
+import { Fragment, useRef, useEffect, useState, useCallback } from "react";
+import { MoreHorizontal, PhoneCall, PhoneMissed, PhoneOff } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ChatHeader } from "@/components/chat/chat-header";
 import { ChatInput } from "@/components/chat/chat-input";
 import { useParams } from "next/navigation";
 import {
+  useAiConversation,
   useConversation,
+  useDeleteMessageForMe,
+  useEditMessage,
   useMessages,
+  useUnsendMessage,
+  useSendAiMessage,
   useSendMessage,
   useConversationDisplay,
 } from "@/hooks/use-chat";
@@ -88,6 +99,49 @@ const formatCallDuration = (seconds?: number) => {
   return `${mins}m ${secs}s`;
 };
 
+const formatMessageClock = (value: unknown): string => {
+  if (!value) return "";
+
+  const date = new Date(value as string | number | Date);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return date.toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const normalizeLightMarkdown = (value: string): string => {
+  // Handle malformed bold markers such as "***Title:**" from some AI responses.
+  return value.replace(/\*\*\*([^*\n]+?:)\*\*/g, "**$1**");
+};
+
+const renderInlineBold = (text: string) => {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+
+  return parts.map((part, index) => {
+    const match = part.match(/^\*\*([^*]+)\*\*$/);
+    if (match) {
+      return <strong key={`bold-${index}`}>{match[1]}</strong>;
+    }
+
+    return <Fragment key={`text-${index}`}>{part}</Fragment>;
+  });
+};
+
+const renderMessageContent = (content?: string) => {
+  if (!content) return null;
+
+  const normalized = normalizeLightMarkdown(content);
+  const lines = normalized.split("\n");
+
+  return lines.map((line, index) => (
+    <p key={`line-${index}`} className={index === 0 ? "" : "mt-1"}>
+      {renderInlineBold(line)}
+    </p>
+  ));
+};
+
 const getSystemCallDescription = (msg: Message, status: string) => {
   if (status === "missed") return "Không được trả lời";
   if (status === "rejected") return "Cuộc gọi đã bị từ chối";
@@ -98,10 +152,7 @@ const getSystemCallDescription = (msg: Message, status: string) => {
 const getSystemCallTime = (msg: Message) => {
   const value = msg.callInfo?.endedAt || msg.createdAt;
 
-  return new Date(value).toLocaleTimeString("vi-VN", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatMessageClock(value);
 };
 
 const getMessageSenderId = (message: Message): string | undefined => {
@@ -114,6 +165,17 @@ const getMessageSenderId = (message: Message): string | undefined => {
   return message.senderId?._id || message.senderId?.id;
 };
 
+const isAiConversation = (conversation: any): boolean => {
+  if (!conversation) return false;
+  const type = String(conversation.type || "").toLowerCase();
+  return (
+    type === "ai" ||
+    Boolean(conversation.isAI) ||
+    Boolean(conversation.isAi) ||
+    Boolean(conversation.isAiAssistant)
+  );
+};
+
 export default function ChatDetailClient() {
   const { id } = useParams();
   const conversationId = id as string;
@@ -123,7 +185,8 @@ export default function ChatDetailClient() {
   const currentUserId = user?.id || user?._id;
 
   // Lấy conversation và messages riêng biệt
-  const { data: conversation } = useConversation(conversationId);
+  const { data: conversationFromDetail } = useConversation(conversationId);
+  const { data: aiConversationData } = useAiConversation();
   const {
     data: messagesData,
     isLoading,
@@ -131,7 +194,17 @@ export default function ChatDetailClient() {
   } = useMessages(conversationId, {
     limit: 20,
   });
-  const messages = messagesData?.messages || [];
+  const aiConversation =
+    aiConversationData?.conversation?.id === conversationId
+      ? aiConversationData.conversation
+      : undefined;
+  const conversation = conversationFromDetail || aiConversation;
+  const aiMode = isAiConversation(conversation);
+  const messages =
+    messagesData?.messages?.length || !aiMode
+      ? messagesData?.messages || []
+      : aiConversationData?.messages || [];
+  const shouldShowMessageError = Boolean(error) && messages.length === 0;
 
   // Hook tập trung logic phân biệt private/group - tự động fetch partner nếu cần
   const {
@@ -141,7 +214,14 @@ export default function ChatDetailClient() {
     statusText,
   } = useConversationDisplay(conversation, currentUserId);
 
-  const { mutate: sendMessage } = useSendMessage();
+  const { mutate: sendMessage, isPending: isSendingMessage } = useSendMessage();
+  const { mutate: sendAiMessage, isPending: isSendingAiMessage } =
+    useSendAiMessage();
+  const { mutate: unsendMessage, isPending: isUnsendPending } =
+    useUnsendMessage();
+  const { mutate: editMessage, isPending: isEditPending } = useEditMessage();
+  const { mutate: deleteMessageForMe, isPending: isDeletePending } =
+    useDeleteMessageForMe();
   const queryClient = useQueryClient();
   const { socket, isConnected } = useSocket();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -406,17 +486,17 @@ export default function ChatDetailClient() {
   }, [messages]);
 
   useEffect(() => {
-    if (!socket.current || !conversationId) return;
+    if (!socket.current || !conversationId || aiMode) return;
 
     socket.current.emit("joinConversation", conversationId);
 
     return () => {
       socket.current?.emit("leaveConversation", conversationId);
     };
-  }, [isConnected, conversationId, socket]);
+  }, [isConnected, conversationId, socket, aiMode]);
 
   useEffect(() => {
-    if (!socket.current || !conversationId) return;
+    if (!socket.current || !conversationId || aiMode) return;
 
     const handleUserTyping = ({
       userId,
@@ -444,10 +524,18 @@ export default function ChatDetailClient() {
       socket.current?.off("userTyping", handleUserTyping);
       socket.current?.off("userStopTyping", handleUserStopTyping);
     };
-  }, [isConnected, conversationId, user]);
+  }, [isConnected, conversationId, user, aiMode]);
 
   const handleSendMessage = (text: string) => {
     if (!text.trim()) return;
+
+    if (aiMode) {
+      sendAiMessage({
+        conversationId,
+        content: text,
+      });
+      return;
+    }
 
     sendMessage({
       conversationId,
@@ -457,6 +545,7 @@ export default function ChatDetailClient() {
   };
 
   const handleTyping = () => {
+    if (aiMode) return;
     if (socket.current && conversationId) {
       socket.current.emit("typing", {
         conversationId,
@@ -467,6 +556,7 @@ export default function ChatDetailClient() {
   };
 
   const handleStopTyping = () => {
+    if (aiMode) return;
     if (socket.current && conversationId) {
       socket.current.emit("stopTyping", { conversationId, userId: user?.id });
     }
@@ -489,7 +579,7 @@ export default function ChatDetailClient() {
           <div className="flex flex-col w-full gap-3.5 pb-4">
             {isLoading ? (
               <MessageSkeleton />
-            ) : error ? (
+            ) : shouldShowMessageError ? (
               <div className="py-8 text-center text-slate-500">
                 Không thể tải tin nhắn
               </div>
@@ -574,7 +664,14 @@ export default function ChatDetailClient() {
                   }
 
                   const messageSenderId = getMessageSenderId(msg);
-                  const isMe = messageSenderId === currentUserId;
+                  const isAiMessage = msg.senderSource === "ai";
+                  const isMe = isAiMessage
+                    ? false
+                    : msg.senderSource === "user"
+                      ? messageSenderId
+                        ? messageSenderId === currentUserId
+                        : false
+                      : messageSenderId === currentUserId;
 
                   const senderInfo =
                     typeof msg.senderId === "object" && msg.senderId !== null
@@ -583,21 +680,73 @@ export default function ChatDetailClient() {
 
                   const senderDisplayName = isMe
                     ? user?.displayName || "You"
-                    : senderInfo?.displayName ||
-                      (conversation?.type === "private"
-                        ? conversationName || "User"
-                        : "User");
+                    : isAiMessage
+                      ? conversation?.name || "Chat AI"
+                      : senderInfo?.displayName ||
+                        (conversation?.type === "private"
+                          ? conversationName || "User"
+                          : "User");
 
                   const senderAvatarKey = isMe
                     ? user?.avatar
-                    : senderInfo?.avatar ||
-                      (conversation?.type === "private"
-                        ? conversationAvatar
-                        : undefined);
+                    : isAiMessage
+                      ? conversation?.groupAvatar || conversationAvatar
+                      : senderInfo?.avatar ||
+                        (conversation?.type === "private"
+                          ? conversationAvatar
+                          : undefined);
+                  const messageTime = formatMessageClock(msg.createdAt);
+                  const messageId = msg.id || msg._id;
+                  const isTextMessage = msg.type === "text";
+                  const isUnsent = Boolean(msg.isUnsent || msg.unsentAt);
+                  const canEdit =
+                    isMe && isTextMessage && !isUnsent && !isAiMessage;
+                  const canUnsend = isMe && !isUnsent && !isAiMessage;
+                  const canDeleteForMe = isMe;
+
+                  const handleEditMessage = () => {
+                    if (!messageId || !canEdit) return;
+
+                    const currentContent = msg.content || "";
+                    const nextContent = window.prompt(
+                      "Sửa tin nhắn",
+                      currentContent,
+                    );
+                    if (nextContent === null) return;
+
+                    const trimmed = nextContent.trim();
+                    if (!trimmed || trimmed === currentContent.trim()) return;
+
+                    editMessage({
+                      conversationId,
+                      messageId,
+                      content: trimmed,
+                    });
+                  };
+
+                  const handleUnsendMessage = () => {
+                    if (!messageId || !canUnsend) return;
+                    const confirmed = window.confirm("Thu hồi tin nhắn này?");
+                    if (!confirmed) return;
+
+                    unsendMessage({
+                      conversationId,
+                      messageId,
+                    });
+                  };
+
+                  const handleDeleteForMe = () => {
+                    if (!messageId || !canDeleteForMe) return;
+
+                    deleteMessageForMe({
+                      conversationId,
+                      messageId,
+                    });
+                  };
 
                   return (
                     <div
-                      key={msg.id || msg._id}
+                      key={messageId}
                       className={`flex items-end gap-2 ${isMe ? "justify-end" : "justify-start"}`}
                     >
                       {!isMe && (
@@ -614,25 +763,84 @@ export default function ChatDetailClient() {
                             : "bg-white text-slate-800 border border-slate-100 rounded-bl-none"
                         }`}
                       >
-                        {msg.content}
-                        <div
-                          className={`text-[10px] mt-1 text-right ${
-                            isMe ? "text-blue-100" : "text-slate-400"
-                          }`}
-                          suppressHydrationWarning
-                        >
-                          {msg.status === "sending"
-                            ? "Đang gửi..."
-                            : msg.status === "failed"
-                              ? "Gửi thất bại"
-                              : new Date(msg.createdAt).toLocaleTimeString(
-                                  "vi-VN",
-                                  {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  },
+                        {renderMessageContent(msg.content)}
+                        {isAiMessage && !isMe && (
+                          <div className="mt-1.5 flex justify-start">
+                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-600">
+                              AI
+                            </span>
+                          </div>
+                        )}
+                        {(msg.status === "sending" ||
+                          msg.status === "failed" ||
+                          messageTime) && (
+                          <div
+                            className={`text-[10px] mt-1 text-right ${
+                              isMe ? "text-blue-100" : "text-slate-400"
+                            }`}
+                            suppressHydrationWarning
+                          >
+                            {msg.status === "sending"
+                              ? "Đang gửi..."
+                              : msg.status === "failed"
+                                ? "Gửi thất bại"
+                                : messageTime}
+                          </div>
+                        )}
+
+                        {(msg.isEdited || isUnsent) && (
+                          <div
+                            className={`mt-1 text-[10px] ${
+                              isMe ? "text-blue-100" : "text-slate-400"
+                            }`}
+                          >
+                            {isUnsent
+                              ? "Đã thu hồi"
+                              : msg.isEdited
+                                ? "Đã chỉnh sửa"
+                                : ""}
+                          </div>
+                        )}
+
+                        {isMe && (canEdit || canUnsend || canDeleteForMe) && (
+                          <div className="mt-1.5 flex justify-end">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  aria-label="Mở tùy chọn tin nhắn"
+                                  className="inline-flex items-center justify-center rounded-full p-1 text-blue-100 hover:bg-blue-500/40 hover:text-white"
+                                  disabled={
+                                    isEditPending ||
+                                    isUnsendPending ||
+                                    isDeletePending
+                                  }
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-40">
+                                {canEdit && (
+                                  <DropdownMenuItem onClick={handleEditMessage}>
+                                    Sửa tin nhắn
+                                  </DropdownMenuItem>
                                 )}
-                        </div>
+                                {canUnsend && (
+                                  <DropdownMenuItem
+                                    onClick={handleUnsendMessage}
+                                  >
+                                    Thu hồi tin nhắn
+                                  </DropdownMenuItem>
+                                )}
+                                {canDeleteForMe && (
+                                  <DropdownMenuItem onClick={handleDeleteForMe}>
+                                    Xóa phía tôi
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        )}
                       </div>
                       {isMe && (
                         <PresignedAvatar
@@ -664,7 +872,7 @@ export default function ChatDetailClient() {
 
       <ChatInput
         onSend={handleSendMessage}
-        disabled={!conversationId}
+        disabled={!conversationId || isSendingMessage || isSendingAiMessage}
         onTyping={handleTyping}
         onStopTyping={handleStopTyping}
       />

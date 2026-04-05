@@ -105,6 +105,18 @@ type RealtimeMessagePayload = Partial<Message> & {
   message?: Partial<Message> & { _id?: string };
 };
 
+type RealtimeDeleteForMePayload = {
+  conversationId?: string;
+  messageId?: string;
+  id?: string;
+  _id?: string;
+  message?: {
+    id?: string;
+    _id?: string;
+    conversationId?: string;
+  };
+};
+
 const getMessageSenderId = (message: Message): string | undefined => {
   if (!message.senderId) return undefined;
 
@@ -275,8 +287,91 @@ export function SocketProvider({ children }: SocketProviderProps) {
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
     };
 
+    const handleRealtimeMessageUpdated = (payload: RealtimeMessagePayload) => {
+      const message = normalizeRealtimeMessage(payload);
+      if (!message) return;
+
+      queryClient.setQueryData(
+        ["messages", message.conversationId],
+        (oldData: MessagesResponse | undefined) => {
+          const oldMessages = oldData?.messages ?? [];
+          const existingIndex = oldMessages.findIndex((item) => {
+            const itemId = item.id || item._id;
+            return itemId === message.id;
+          });
+
+          if (existingIndex < 0) {
+            return {
+              ...(oldData || {}),
+              messages: [...oldMessages, message],
+            };
+          }
+
+          const nextMessages = [...oldMessages];
+          nextMessages[existingIndex] = {
+            ...nextMessages[existingIndex],
+            ...message,
+            status: "sent",
+            isOptimistic: false,
+          };
+
+          return {
+            ...(oldData || {}),
+            messages: nextMessages,
+          };
+        },
+      );
+
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    };
+
+    const handleRealtimeDeletedForMe = (
+      payload: RealtimeDeleteForMePayload,
+    ) => {
+      const messageId =
+        payload?.messageId ||
+        payload?.id ||
+        payload?._id ||
+        payload?.message?.id ||
+        payload?.message?._id;
+      const conversationId =
+        payload?.conversationId || payload?.message?.conversationId;
+
+      if (!messageId) return;
+
+      if (conversationId) {
+        queryClient.setQueryData(
+          ["messages", conversationId],
+          (oldData: MessagesResponse | undefined) => ({
+            ...(oldData || {}),
+            messages: (oldData?.messages || []).filter((item) => {
+              const itemId = item.id || item._id;
+              return itemId !== messageId;
+            }),
+          }),
+        );
+      } else {
+        queryClient.setQueriesData<MessagesResponse | undefined>(
+          { queryKey: ["messages"] },
+          (oldData) => ({
+            ...(oldData || {}),
+            messages: (oldData?.messages || []).filter((item) => {
+              const itemId = item.id || item._id;
+              return itemId !== messageId;
+            }),
+          }),
+        );
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    };
+
     socketInstance.on("message:new", handleRealtimeMessage);
     socketInstance.on("newMessage", handleRealtimeMessage);
+    socketInstance.on("message:updated", handleRealtimeMessageUpdated);
+    socketInstance.on("message:edited", handleRealtimeMessageUpdated);
+    socketInstance.on("message:unsent", handleRealtimeMessageUpdated);
+    socketInstance.on("message:deleted-for-me", handleRealtimeDeletedForMe);
 
     const handleNotification = (notification: RealtimeNotificationPayload) => {
       queryClient.setQueryData<NotificationsResponse | undefined>(
@@ -360,6 +455,10 @@ export function SocketProvider({ children }: SocketProviderProps) {
       socketInstance.off("friend_removed");
       socketInstance.off("message:new", handleRealtimeMessage);
       socketInstance.off("newMessage", handleRealtimeMessage);
+      socketInstance.off("message:updated", handleRealtimeMessageUpdated);
+      socketInstance.off("message:edited", handleRealtimeMessageUpdated);
+      socketInstance.off("message:unsent", handleRealtimeMessageUpdated);
+      socketInstance.off("message:deleted-for-me", handleRealtimeDeletedForMe);
       socketInstance.off("notification", handleNotification);
       socketInstance.off("notification:new");
       socketInstance.off("user:presence", handleUserPresence);

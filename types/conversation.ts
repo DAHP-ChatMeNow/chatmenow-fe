@@ -8,6 +8,7 @@ export interface ConversationMember {
 export interface LastMessage {
   content?: string;
   senderId?: string;
+  senderSource?: "user" | "ai";
   senderName?: string;
   type?: string;
   callInfo?: {
@@ -23,6 +24,9 @@ export interface Conversation {
   id: string;
   _id: string;
   type: string;
+  isAI?: boolean;
+  isAi?: boolean;
+  isAiAssistant?: boolean;
   name?: string;
   groupAvatar?: string;
   members: ConversationMember[];

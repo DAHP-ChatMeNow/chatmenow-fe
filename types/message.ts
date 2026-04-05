@@ -20,12 +20,14 @@ export interface MessageCallInfo {
 }
 
 export type MessageStatus = "sending" | "sent" | "failed";
+export type MessageSenderSource = "user" | "ai";
 
 export interface Message {
   id: string;
   conversationId: string;
   _id?: string;
   senderId?: string | MessageSenderInfo;
+  senderSource?: MessageSenderSource;
   content?: string;
   type: string;
   attachments?: MessageAttachment[];
@@ -33,6 +35,10 @@ export interface Message {
   replyToMessageId?: string;
   readBy?: string[];
   isUnsent?: boolean;
+  isEdited?: boolean;
+  editedAt?: Date | string;
+  unsentAt?: Date | string;
+  deletedFor?: string[];
   createdAt: Date | string;
   clientTempId?: string;
   status?: MessageStatus;

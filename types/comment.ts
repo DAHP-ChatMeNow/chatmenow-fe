@@ -4,8 +4,9 @@ export interface Comment {
   id: string;
   _id: string;
   postId: string;
-  userId: string;
+  userId?: string;
   user?: User;
+  authorSource?: "user" | "ai";
   content: string;
   replyToCommentId?: string;
   createdAt: Date;
