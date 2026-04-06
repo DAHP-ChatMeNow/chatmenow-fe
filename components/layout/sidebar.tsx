@@ -10,10 +10,44 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useConversations } from "@/hooks/use-chat";
+import { useNotifications } from "@/hooks/use-notification";
+
+const getCurrentMessageCount = (conversations: Array<{ unreadCount?: number }>) => {
+  if (!conversations?.length) return 0;
+
+  const unreadTotal = conversations.reduce(
+    (sum, conversation) => sum + Number(conversation?.unreadCount || 0),
+    0,
+  );
+
+  // Fallback về tổng số cuộc trò chuyện nếu API chưa trả unreadCount.
+  return unreadTotal > 0 ? unreadTotal : conversations.length;
+};
+
+const getCurrentNotificationCount = (
+  notifications: Array<{ isRead?: boolean }>,
+) => {
+  if (!notifications?.length) return 0;
+
+  const unreadTotal = notifications.filter((item) => !item?.isRead).length;
+
+  // Fallback về tổng thông báo hiện có nếu tất cả đã đọc.
+  return unreadTotal > 0 ? unreadTotal : notifications.length;
+};
 
 export function Sidebar({ mode = "desktop" }: { mode?: "desktop" | "mobile" }) {
   const pathname = usePathname();
   const isMobile = mode === "mobile";
+  const { data: conversationsData } = useConversations();
+  const { data: notificationsData } = useNotifications();
+
+  const messageCount = getCurrentMessageCount(
+    (conversationsData?.conversations || []) as Array<{ unreadCount?: number }>,
+  );
+  const notificationCount = getCurrentNotificationCount(
+    (notificationsData?.notifications || []) as Array<{ isRead?: boolean }>,
+  );
 
   const isActive = (path: string) => pathname.startsWith(path);
 
@@ -22,7 +56,7 @@ export function Sidebar({ mode = "desktop" }: { mode?: "desktop" | "mobile" }) {
       icon: MessageSquare,
       path: "/messages",
       label: "Nhắn tin",
-      badgeCount: 8,
+      badgeCount: messageCount,
     },
     { icon: FileText, path: "/blog", label: "Bài viết" },
     { icon: UserPlus, path: "/contacts", label: "Bạn bè" },
@@ -30,7 +64,7 @@ export function Sidebar({ mode = "desktop" }: { mode?: "desktop" | "mobile" }) {
       icon: Bell,
       path: "/notifications",
       label: "Thông báo",
-      badgeCount: 5,
+      badgeCount: notificationCount,
     },
     { icon: CircleUser, path: "/profile", label: "Cá nhân" },
     {

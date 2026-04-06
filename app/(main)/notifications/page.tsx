@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import {
   useNotifications,
   useMarkAllNotificationsAsRead,
+  useMarkNotificationAsRead,
 } from "@/hooks/use-notification";
 import { Notification } from "@/types/notification";
 import {
@@ -70,6 +71,10 @@ export default function NotificationsPage() {
   };
 
   const handleOpenNotification = (noti: Notification) => {
+    if (!noti.isRead) {
+      markAsRead(noti.id);
+    }
+
     if (!noti.targetUrl) return;
     router.push(noti.targetUrl);
   };
@@ -77,12 +82,12 @@ export default function NotificationsPage() {
   const { data: notificationsData, isLoading, error } = useNotifications();
   const { mutate: markAllAsRead, isPending: isMarkingAll } =
     useMarkAllNotificationsAsRead();
+  const { mutate: markAsRead } = useMarkNotificationAsRead();
   const { mutate: acceptFriendRequest } = useAcceptFriendRequestContact();
   const { mutate: rejectFriendRequest } = useRejectFriendRequestContact();
   const [acceptingIds, setAcceptingIds] = useState<string[]>([]);
   const [rejectingIds, setRejectingIds] = useState<string[]>([]);
   const notifications = notificationsData?.notifications || [];
-  // Only show unread notifications
   const unreadNotifications = notifications.filter((noti) => !noti.isRead);
 
   const handleAcceptFriendRequest = (
@@ -154,8 +159,7 @@ export default function NotificationsPage() {
               Không thể tải thông báo
             </div>
           ) : notifications.length > 0 ? (
-            unreadNotifications.length > 0 ? (
-              unreadNotifications.map((noti, index) => (
+            notifications.map((noti, index) => (
                 <div
                   key={`${noti.id}-${index}`}
                   className={`flex items-start gap-4 p-4 rounded-2xl transition-all cursor-pointer ${noti.isRead ? "hover:bg-slate-50" : "bg-blue-50/40 border border-blue-100 shadow-sm"}`}
@@ -188,7 +192,23 @@ export default function NotificationsPage() {
                   </div>
 
                   <div className="flex-1 space-y-1">
-                    <p className="text-[14.5px] text-slate-900 leading-tight">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] ${
+                          noti.isRead
+                            ? "bg-slate-100 text-slate-500"
+                            : "bg-blue-100 text-blue-700"
+                        }`}
+                      >
+                        {noti.isRead ? "Đã đọc" : "Chưa đọc"}
+                      </span>
+                    </div>
+
+                    <p
+                      className={`text-[14.5px] leading-tight text-slate-900 ${
+                        noti.isRead ? "font-normal" : "font-semibold"
+                      }`}
+                    >
                       <span className="font-semibold">
                         {getSenderName(noti)}{" "}
                       </span>
@@ -244,11 +264,6 @@ export default function NotificationsPage() {
                   )}
                 </div>
               ))
-            ) : (
-              <div className="py-12 text-center text-slate-500">
-                Bạn đã đọc tất cả thông báo
-              </div>
-            )
           ) : (
             <div className="py-12 text-center text-slate-500">
               Bạn không có thông báo nào
