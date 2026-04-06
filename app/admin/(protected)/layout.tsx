@@ -3,11 +3,18 @@
 import { useAuthStore } from "@/store/use-auth-store";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
-import { Users, Newspaper, Bot, LogOut, ShieldCheck } from "lucide-react";
+import { Users, Newspaper, Bot, LogOut, ShieldCheck, Home, BarChart3 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 const navItems = [
+  {
+    icon: Home,
+    label: "Bảng điều khiển",
+    path: "/admin",
+    exactMatch: true,
+  },
+  { icon: BarChart3, label: "Thống kê", path: "/admin/dashboard", exactMatch: true },
   { icon: Users, label: "Người dùng", path: "/admin/users" },
   { icon: Newspaper, label: "Bài viết", path: "/admin/posts" },
   { icon: Bot, label: "AI Chat", path: "/admin/ai" },
@@ -49,8 +56,8 @@ export default function AdminProtectedLayout({
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-1">
-          {navItems.map(({ icon: Icon, label, path }) => {
-            const active = pathname.startsWith(path);
+          {navItems.map(({ icon: Icon, label, path, exactMatch }) => {
+            const active = exactMatch ? pathname === path : pathname.startsWith(path);
             return (
               <Link
                 key={path}
