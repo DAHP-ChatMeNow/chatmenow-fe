@@ -13,6 +13,12 @@ export interface SearchUsersResponse {
   users: User[];
 }
 
+export interface AcceptFriendRequestResponse {
+  success: boolean;
+  friend?: User;
+  conversationId?: string;
+}
+
 // Helper function to map _id to id for MongoDB compatibility
 const mapMongoId = (obj: any): any => {
   if (!obj) return obj;
@@ -97,8 +103,12 @@ export const contactService = {
     return mapMongoId(res.data);
   },
 
-  acceptFriendRequest: async (requestId: string) => {
-    const res = await api.put(`/users/friend-requests/${requestId}/accept`);
+  acceptFriendRequest: async (
+    requestId: string,
+  ): Promise<AcceptFriendRequestResponse> => {
+    const res = await api.put<AcceptFriendRequestResponse>(
+      `/users/friend-requests/${requestId}/accept`,
+    );
     return mapMongoId(res.data);
   },
 

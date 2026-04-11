@@ -510,6 +510,14 @@ export default function ChatDetailClient() {
       : undefined;
   const conversation = conversationFromDetail || aiConversation;
   const aiMode = isAiConversation(conversation);
+  const isConversationBlocked = Boolean(
+    !aiMode && (conversation as any)?.isBlocked,
+  );
+  const blockedMessage = (conversation as any)?.blockedByMe
+    ? "Bạn đã chặn người này. Mở chặn để tiếp tục trò chuyện."
+    : (conversation as any)?.blockedByOther
+      ? "Bạn không thể chat vì người này đã chặn bạn."
+      : "Cuộc trò chuyện đang bị chặn.";
   const messages =
     messagesData?.messages?.length || !aiMode
       ? messagesData?.messages || []
@@ -616,6 +624,10 @@ export default function ChatDetailClient() {
   const longPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const messageElementMapRef = useRef<Record<string, HTMLDivElement | null>>({});
   const shouldAutoScrollRef = useRef(true);
   const hasInitializedScrollRef = useRef(false);
   const beforeIdRef = useRef<string | null>(null);
@@ -630,6 +642,12 @@ export default function ChatDetailClient() {
   const [activeMessageActionsId, setActiveMessageActionsId] = useState<
     string | null
   >(null);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<
+    string | null
+  >(null);
+  const [pendingFocusMessageId, setPendingFocusMessageId] = useState<
+    string | null
+  >(null);
   const [backgroundKey, setBackgroundKey] =
     useState<ChatBackgroundKey>("default");
 
@@ -640,8 +658,75 @@ export default function ChatDetailClient() {
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+        highlightTimeoutRef.current = null;
+      }
     };
   }, []);
+
+  const focusMessageById = useCallback((messageId: string) => {
+    const element = messageElementMapRef.current[messageId];
+    if (!element) return false;
+
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedMessageId(messageId);
+
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+    }
+
+    highlightTimeoutRef.current = setTimeout(() => {
+      setHighlightedMessageId((current) =>
+        current === messageId ? null : current,
+      );
+      highlightTimeoutRef.current = null;
+    }, 1800);
+
+    return true;
+  }, []);
+
+  useEffect(() => {
+    const handleFocusMessage = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        conversationId?: string;
+        messageId?: string;
+      }>;
+
+      const targetConversationId = customEvent.detail?.conversationId;
+      const targetMessageId = customEvent.detail?.messageId;
+
+      if (!targetMessageId) return;
+      if (targetConversationId && targetConversationId !== conversationId) return;
+
+      setPendingFocusMessageId(targetMessageId);
+    };
+
+    window.addEventListener("chat:focus-message", handleFocusMessage);
+
+    return () => {
+      window.removeEventListener("chat:focus-message", handleFocusMessage);
+    };
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!pendingFocusMessageId) return;
+
+    const hasMessage = messages.some(
+      (message) => getMessageId(message) === pendingFocusMessageId,
+    );
+    if (!hasMessage) return;
+
+    const frameId = requestAnimationFrame(() => {
+      if (focusMessageById(pendingFocusMessageId)) {
+        setPendingFocusMessageId(null);
+      }
+    });
+
+    return () => {
+      cancelAnimationFrame(frameId);
+    };
+  }, [focusMessageById, getMessageId, messages, pendingFocusMessageId]);
 
   useEffect(() => {
     const oldestMessage = messages[0];
@@ -993,6 +1078,11 @@ export default function ChatDetailClient() {
   const handleSendMessage = async (text: string) => {
     if (!text.trim()) return;
 
+    if (isConversationBlocked) {
+      toast.error(blockedMessage);
+      return;
+    }
+
     if (aiMode) {
       await sendAiMessage({
         conversationId,
@@ -1011,6 +1101,11 @@ export default function ChatDetailClient() {
   const handleSendAttachments = useCallback(
     async (files: File[]) => {
       if (!files.length || !conversationId) return;
+
+      if (isConversationBlocked) {
+        toast.error(blockedMessage);
+        return;
+      }
 
       if (aiMode) {
         toast.info("Đoạn chat AI hiện chỉ hỗ trợ tin nhắn văn bản");
@@ -1072,7 +1167,7 @@ export default function ChatDetailClient() {
         setIsSendingAttachment(false);
       }
     },
-    [aiMode, conversationId, sendMessage],
+    [aiMode, blockedMessage, conversationId, isConversationBlocked, sendMessage],
   );
 
   const handleTyping = () => {
@@ -1165,6 +1260,7 @@ export default function ChatDetailClient() {
                       msg,
                       callStatus,
                     );
+                    const messageId = getMessageId(msg);
                     const systemSenderId = getMessageSenderId(msg);
                     const isMySystemMessage =
                       !!systemSenderId && systemSenderId === currentUserId;
@@ -1183,6 +1279,14 @@ export default function ChatDetailClient() {
                           />
                         )}
                         <div
+                          ref={(element) => {
+                            if (!messageId) return;
+                            if (element) {
+                              messageElementMapRef.current[messageId] = element;
+                            } else {
+                              delete messageElementMapRef.current[messageId];
+                            }
+                          }}
                           className={`flex items-end gap-2 ${
                             isMySystemMessage ? "justify-end" : "justify-start"
                           }`}
@@ -1200,6 +1304,10 @@ export default function ChatDetailClient() {
                               isMySystemMessage
                                 ? "bg-blue-600 text-white rounded-br-none border-blue-600"
                                 : `bg-white text-slate-800 rounded-bl-none ${callStyle.bubbleClass}`
+                            } ${
+                              messageId && highlightedMessageId === messageId
+                                ? "ring-2 ring-amber-300 ring-offset-2"
+                                : ""
                             }`}
                           >
                             <p
@@ -1365,6 +1473,14 @@ export default function ChatDetailClient() {
                         />
                       )}
                       <div
+                        ref={(element) => {
+                          if (!messageId) return;
+                          if (element) {
+                            messageElementMapRef.current[messageId] = element;
+                          } else {
+                            delete messageElementMapRef.current[messageId];
+                          }
+                        }}
                         className={`flex items-end gap-2 ${isMe ? "justify-end" : "justify-start"}`}
                       >
                         {!isMe && (
@@ -1391,6 +1507,10 @@ export default function ChatDetailClient() {
                                     ? "bg-blue-600 text-white rounded-br-none"
                                     : "bg-white text-slate-800 border border-slate-100 rounded-bl-none"
                                 }`
+                          } ${
+                            messageId && highlightedMessageId === messageId
+                              ? "ring-2 ring-amber-300 ring-offset-2"
+                              : ""
                           }`}
                         >
                           {attachments.length > 0 && (
@@ -1544,6 +1664,12 @@ export default function ChatDetailClient() {
         </div>
       </ScrollArea>
 
+      {isConversationBlocked && (
+        <div className="mx-3 mb-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 md:mx-6 xl:mx-10">
+          {blockedMessage}
+        </div>
+      )}
+
       <ChatInput
         onSend={handleSendMessage}
         onSendAttachments={handleSendAttachments}
@@ -1554,7 +1680,8 @@ export default function ChatDetailClient() {
           !conversationId ||
           isSendingMessage ||
           isSendingAiMessage ||
-          isSendingAttachment
+          isSendingAttachment ||
+          isConversationBlocked
         }
         onTyping={handleTyping}
         onStopTyping={handleStopTyping}

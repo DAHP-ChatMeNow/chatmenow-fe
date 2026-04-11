@@ -53,6 +53,12 @@ export function ConversationItemDisplay({
     currentUserId,
   );
   const isAi = isAiConversation(conversation);
+  const isBlocked = Boolean(conversation.isBlocked);
+  const blockedLabel = conversation.blockedByMe
+    ? "Bạn đã chặn người này"
+    : conversation.blockedByOther
+      ? "Người này đã chặn bạn"
+      : undefined;
 
   const fallbackName = isAi ? "Chat AI" : "Unknown";
   const fallbackLastMessage = isAi
@@ -68,6 +74,8 @@ export function ConversationItemDisplay({
       time={formatMessageTime(conversation.lastMessage?.createdAt)}
       unread={conversation.unreadCount || 0}
       isActive={isActive}
+      isBlocked={isBlocked}
+      blockedLabel={blockedLabel}
     />
   );
 }

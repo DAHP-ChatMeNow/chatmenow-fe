@@ -47,14 +47,21 @@ export function ChatSidebar() {
   const { data: aiConversationData } = useAiConversation();
   const conversations = useMemo(() => {
     const merged = new Map<string, ChatConversation>();
+    const getConversationKey = (conversation: ChatConversation) =>
+      String(conversation?.id || conversation?._id || "");
 
     (conversationsData?.conversations || []).forEach((conversation) => {
-      merged.set(conversation.id, conversation);
+      const key = getConversationKey(conversation);
+      if (!key) return;
+      merged.set(key, conversation);
     });
 
     const aiConversation = aiConversationData?.conversation;
-    if (aiConversation?.id) {
-      merged.set(aiConversation.id, aiConversation);
+    if (aiConversation) {
+      const key = getConversationKey(aiConversation);
+      if (key) {
+        merged.set(key, aiConversation);
+      }
     }
 
     const toTimestamp = (value: unknown) => {
@@ -73,13 +80,29 @@ export function ChatSidebar() {
       );
     };
 
-    return Array.from(merged.values()).sort((left, right) => {
-      const leftAi = isAiConversation(left) ? 1 : 0;
-      const rightAi = isAiConversation(right) ? 1 : 0;
+    const sortedConversations = Array.from(merged.values()).sort(
+      (left, right) => {
+        const leftAi = isAiConversation(left) ? 1 : 0;
+        const rightAi = isAiConversation(right) ? 1 : 0;
 
-      if (leftAi !== rightAi) return rightAi - leftAi;
+        if (leftAi !== rightAi) return rightAi - leftAi;
 
-      return toTimestamp(right.updatedAt) - toTimestamp(left.updatedAt);
+        return toTimestamp(right.updatedAt) - toTimestamp(left.updatedAt);
+      },
+    );
+
+    let hasAiConversation = false;
+    return sortedConversations.filter((conversation) => {
+      if (!isAiConversation(conversation)) {
+        return true;
+      }
+
+      if (hasAiConversation) {
+        return false;
+      }
+
+      hasAiConversation = true;
+      return true;
     });
   }, [conversationsData, aiConversationData]);
   const { data: contactsData } = useContacts();

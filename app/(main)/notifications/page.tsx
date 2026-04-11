@@ -106,6 +106,11 @@ export default function NotificationsPage() {
     }
     setAcceptingIds([...acceptingIds, notificationId]);
     acceptFriendRequest(requestId, {
+      onSuccess: (result) => {
+        if (result?.conversationId) {
+          router.push(`/messages/${result.conversationId}`);
+        }
+      },
       onSettled: () => {
         setAcceptingIds(acceptingIds.filter((id) => id !== notificationId));
       },

@@ -11,6 +11,7 @@ import {
 } from "@/hooks/use-contact";
 import { useState } from "react";
 import { Loader } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 interface FriendRequestsListProps {
   requests: FriendRequest[];
@@ -95,6 +96,7 @@ export function FriendRequestsList({
   requests,
   isLoading,
 }: FriendRequestsListProps) {
+  const router = useRouter();
   const { mutate: acceptRequest } = useAcceptFriendRequest();
   const { mutate: rejectRequest } = useRejectFriendRequest();
   const [processingIds, setProcessingIds] = useState<string[]>([]);
@@ -102,6 +104,11 @@ export function FriendRequestsList({
   const handleAccept = (id: string) => {
     setProcessingIds((prev) => [...prev, id]);
     acceptRequest(id, {
+      onSuccess: (result) => {
+        if (result?.conversationId) {
+          router.push(`/messages/${result.conversationId}`);
+        }
+      },
       onSettled: () => setProcessingIds((prev) => prev.filter((x) => x !== id)),
     });
   };

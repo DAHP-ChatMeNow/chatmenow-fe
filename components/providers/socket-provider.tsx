@@ -222,6 +222,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
     socketInstance.on("friend_request_accepted", () => {
       queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
     });
 
     socketInstance.on("friend_request_rejected", () => {
@@ -235,6 +236,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
     socketInstance.on("friend_list_updated", () => {
       queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
     });
 
     socketInstance.on("friend_removed", () => {

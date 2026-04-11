@@ -32,6 +32,10 @@ export interface Conversation {
   members: ConversationMember[];
   lastMessage?: LastMessage;
   unreadCount?: number;
+  isBlocked?: boolean;
+  blockedByMe?: boolean;
+  blockedByOther?: boolean;
+  blockReason?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

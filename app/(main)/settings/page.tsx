@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   Bell,
   ShieldCheck,
+  ShieldBan,
   Languages,
   LogOut,
   ChevronRight,
@@ -32,6 +33,7 @@ import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/contexts/language-context";
+import { useBlockedUsers, useUnblockUser } from "@/hooks/use-contact";
 import { toast } from "sonner";
 
 // ─── Mock activity data (until API is ready) ───────────────────────────────
@@ -84,11 +86,15 @@ export default function SettingsPage() {
   const logout = useAuthStore((state) => state.logout);
   const user = useAuthStore((state) => state.user);
   const { language, setLanguage, t } = useLanguage();
+  const { data: blockedUsersData, isLoading: isLoadingBlockedUsers } =
+    useBlockedUsers();
+  const unblockUserMutation = useUnblockUser();
 
   const [showLanguageDialog, setShowLanguageDialog] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showPhoneDialog, setShowPhoneDialog] = useState(false);
   const [showActivity, setShowActivity] = useState(false);
+  const [showBlockedDialog, setShowBlockedDialog] = useState(false);
   const [activityTab, setActivityTab] = useState<"viewed" | "liked">("viewed");
 
   const [currentPw, setCurrentPw] = useState("");
@@ -98,6 +104,7 @@ export default function SettingsPage() {
 
   const [phone, setPhone] = useState(user?.phone || "");
   const [isSavingPhone, setIsSavingPhone] = useState(false);
+  const blockedUsers = blockedUsersData?.blockedUsers || [];
 
   const handleLogout = () => {
     logout();
@@ -241,6 +248,15 @@ export default function SettingsPage() {
               iconColor="text-blue-500"
               label={t.privacy}
               description="Quyền riêng tư, khoá ứng dụng"
+            />
+            <SettingItem
+              icon={ShieldBan}
+              iconBg="bg-red-50 dark:bg-red-900/20"
+              iconColor="text-red-500"
+              label="Người đã chặn"
+              description="Xem danh sách và mở chặn người dùng"
+              badge={String(blockedUsers.length)}
+              onClick={() => setShowBlockedDialog(true)}
             />
             <div
               onClick={() => setShowLanguageDialog(true)}
@@ -531,6 +547,74 @@ export default function SettingsPage() {
           <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-700 shrink-0">
             <p className="text-[11px] text-slate-400 text-center">
               Lịch sử hoạt động chỉ hiển thị với bạn
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Blocked users */}
+      <Dialog open={showBlockedDialog} onOpenChange={setShowBlockedDialog}>
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-lg bg-white dark:bg-slate-800 h-[85vh] md:h-[80vh] flex flex-col p-0 gap-0 rounded-2xl">
+          <DialogHeader className="px-5 pt-5 pb-0 shrink-0">
+            <DialogTitle className="flex items-center gap-2 dark:text-white">
+              <ShieldBan className="w-5 h-5 text-red-500" />
+              Người đã chặn
+            </DialogTitle>
+          </DialogHeader>
+          <div className="px-5 pt-3 shrink-0">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Những người này sẽ không thể nhắn tin hoặc tìm bạn cho đến khi bạn mở chặn.
+            </p>
+          </div>
+          <ScrollArea className="flex-1 min-h-0">
+            <div className="px-5 py-4 space-y-3">
+              {isLoadingBlockedUsers ? (
+                <div className="py-14 text-sm text-center text-slate-400">
+                  Đang tải danh sách...
+                </div>
+              ) : blockedUsers.length === 0 ? (
+                <div className="py-14 text-sm text-center text-slate-400">
+                  Bạn chưa chặn ai cả
+                </div>
+              ) : (
+                blockedUsers.map((blockedUser) => (
+                  <div
+                    key={blockedUser.id || blockedUser._id}
+                    className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-700/50 rounded-2xl"
+                  >
+                    <PresignedAvatar
+                      avatarKey={blockedUser.avatar}
+                      displayName={blockedUser.displayName}
+                      className="w-12 h-12 shrink-0"
+                      fallbackClassName="text-sm font-bold"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate text-slate-900 dark:text-white">
+                        {blockedUser.displayName}
+                      </p>
+                      <p className="text-xs text-slate-400 truncate mt-0.5">
+                        {blockedUser.bio || "Người dùng đã bị chặn"}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={unblockUserMutation.isPending}
+                      onClick={() =>
+                        unblockUserMutation.mutate(blockedUser.id || blockedUser._id || "")
+                      }
+                      className="shrink-0 border-slate-200 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                    >
+                      Mở chặn
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+          </ScrollArea>
+          <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-700 shrink-0">
+            <p className="text-[11px] text-slate-400 text-center">
+              Chặn người dùng chỉ ngăn họ liên hệ với bạn. Bạn bè vẫn được giữ nguyên cho đến khi bạn xoá thủ công.
             </p>
           </div>
         </DialogContent>

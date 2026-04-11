@@ -54,7 +54,7 @@ import {
   useDissolveGroup,
 } from "@/hooks/use-chat";
 import { useAuthStore } from "@/store/use-auth-store";
-import { useContacts, useRemoveFriend } from "@/hooks/use-contact";
+import { useBlockUser, useContacts } from "@/hooks/use-contact";
 import { useCreateConversation } from "@/hooks/use-chat";
 import { useVideoCall } from "@/components/providers/video-call-provider";
 import { Conversation, ConversationMember } from "@/types/conversation";
@@ -173,7 +173,7 @@ export function ChatHeader({
   const currentUserId = user?.id || user?._id;
   const { data: contactsData } = useContacts();
   const contacts = contactsData?.contacts || [];
-  const removeFriendMutation = useRemoveFriend();
+  const blockUserMutation = useBlockUser();
   const createGroupMutation = useCreateConversation();
   const { startCall, isBusy } = useVideoCall();
 
@@ -483,13 +483,14 @@ export function ChatHeader({
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       className="h-10 rounded-lg px-3 text-[15px] font-medium text-slate-700"
-                      onClick={() => {
+                      onClick={async () => {
                         if (partnerId) {
-                          removeFriendMutation.mutate(partnerId);
+                          await blockUserMutation.mutateAsync(partnerId);
+                          router.push("/contacts");
                         }
                       }}
                     >
-                      <ShieldBan className="text-red-500" /> Chặn bạn bè
+                      <ShieldBan className="text-red-500" /> Chặn người này
                     </DropdownMenuItem>
                   </>
                 )}
@@ -770,6 +771,10 @@ function MessagesSideSheet({
   onSearchQueryChange: (v: string) => void;
   title: string;
 }) {
+  const getMessageId = useCallback((message: Message): string | undefined => {
+    return message.id || message._id;
+  }, []);
+
   const cacheKey = useMemo(
     () => (conversationId ? `chat-side-sheet-cache:${conversationId}` : null),
     [conversationId],
@@ -980,14 +985,35 @@ function MessagesSideSheet({
                 <div className="text-sm text-slate-500">Không có kết quả</div>
               ) : (
                 searchMsgs.map((m, idx) => (
-                  <div key={m.id || idx} className="p-2 border rounded-md">
+                  <button
+                    key={m.id || idx}
+                    type="button"
+                    className="w-full p-2 text-left border rounded-md transition-colors hover:bg-slate-50"
+                    onClick={() => {
+                      const messageId = getMessageId(m);
+                      if (!messageId || !conversationId || typeof window === "undefined") {
+                        return;
+                      }
+
+                      window.dispatchEvent(
+                        new CustomEvent("chat:focus-message", {
+                          detail: {
+                            conversationId,
+                            messageId,
+                          },
+                        }),
+                      );
+
+                      onOpenChange(false);
+                    }}
+                  >
                     <div className="text-sm whitespace-pre-wrap text-slate-800">
                       {m.content}
                     </div>
                     <div className="mt-1 text-xs text-slate-500">
                       {new Date(m.createdAt).toLocaleString()}
                     </div>
-                  </div>
+                  </button>
                 ))
               )}
             </div>

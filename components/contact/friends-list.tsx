@@ -1,12 +1,11 @@
 "use client";
 
-import { MessageCircle, Loader } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { MessageCircle, Loader, UserCircle2 } from "lucide-react";
 import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 import { Button } from "@/components/ui/button";
 import { User } from "@/types/user";
 import { useRouter } from "next/navigation";
-import { useRemoveFriend } from "@/hooks/use-contact";
+import { useBlockedUsers } from "@/hooks/use-contact";
 import { useGetPrivateConversation } from "@/hooks/use-chat";
 import { formatPresenceStatus } from "@/lib/utils";
 
@@ -22,8 +21,11 @@ export function FriendsList({
   searchQuery = "",
 }: FriendsListProps) {
   const router = useRouter();
-  const { mutate: removeFriend } = useRemoveFriend();
+  const { data: blockedUsersData } = useBlockedUsers();
   const { mutate: getPrivateConversation } = useGetPrivateConversation();
+  const blockedIdSet = new Set(
+    (blockedUsersData?.blockedUsers || []).map((user) => user.id || user._id),
+  );
 
   const filteredFriends = friends.filter((friend) =>
     friend.displayName.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -36,6 +38,10 @@ export function FriendsList({
         router.push(`/messages/${conversation.id}`);
       },
     });
+  };
+
+  const handleViewProfile = (friendId: string) => {
+    router.push(`/profile/${friendId}`);
   };
 
   if (isLoading) {
@@ -73,23 +79,32 @@ export function FriendsList({
                 size="sm"
                 variant="ghost"
                 className="h-7 w-7 p-0"
-                onClick={() => handleMessageFriend(friend.id)}
+                onClick={() => handleViewProfile(friend.id)}
+                title="Xem thông tin cá nhân"
               >
-                <MessageCircle className="w-4 h-4 text-blue-600" />
+                <UserCircle2 className="w-4 h-4 text-slate-600" />
               </Button>
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-7 w-7 p-0 text-red-600"
-                onClick={() => removeFriend(friend.id)}
+                className="h-7 w-7 p-0"
+                onClick={() => handleMessageFriend(friend.id)}
+                title="Nhắn tin"
               >
-                ×
+                <MessageCircle className="w-4 h-4 text-blue-600" />
               </Button>
             </div>
           </div>
-          <p className="font-semibold text-sm text-slate-900">
-            {friend.displayName}
-          </p>
+          <div className="flex items-center gap-2 min-w-0">
+            <p className="font-semibold text-sm text-slate-900 truncate">
+              {friend.displayName}
+            </p>
+            {blockedIdSet.has(friend.id) && (
+              <span className="px-1.5 py-0.5 text-[10px] font-semibold text-white bg-red-500 rounded-full shrink-0">
+                Chặn
+              </span>
+            )}
+          </div>
           <p className="text-xs text-slate-400">
             {formatPresenceStatus(
               friend.isOnline,
@@ -97,6 +112,13 @@ export function FriendsList({
               friend.lastSeenText,
             )}
           </p>
+          <button
+            type="button"
+            onClick={() => handleViewProfile(friend.id)}
+            className="mt-1 text-[11px] font-medium text-slate-500 hover:text-blue-600"
+          >
+            Xem thông tin cá nhân
+          </button>
         </div>
       ))}
     </div>

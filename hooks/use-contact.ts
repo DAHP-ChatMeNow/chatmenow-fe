@@ -114,9 +114,9 @@ export const useAcceptFriendRequest = () => {
   return useMutation({
     mutationFn: contactService.acceptFriendRequest,
     onSuccess: () => {
-      // ❌ Bỏ invalidateQueries vì socket sẽ tự động update
-      // queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
-      // queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
       toast.success("Đã chấp nhận lời mời kết bạn");
     },
     onError: (error: any) => {
@@ -157,6 +157,51 @@ export const useRemoveFriend = () => {
     },
     onError: (error: any) => {
       toast.error(error?.response?.data?.message || "Không thể xóa bạn");
+    },
+  });
+};
+
+export const useBlockedUsers = () => {
+  const user = useAuthStore((state) => state.user);
+
+  return useQuery({
+    queryKey: ["blocked-users", user?._id],
+    queryFn: () => userService.getBlockedUsers(),
+    enabled: !!user?._id,
+    refetchOnWindowFocus: false,
+    staleTime: 5 * 60 * 1000,
+  });
+};
+
+export const useBlockUser = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: userService.blockUser,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["blocked-users"] });
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      toast.success("Đã chặn người dùng");
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || "Không thể chặn người dùng");
+    },
+  });
+};
+
+export const useUnblockUser = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: userService.unblockUser,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["blocked-users"] });
+      toast.success("Đã mở chặn người dùng");
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message || "Không thể mở chặn người dùng",
+      );
     },
   });
 };

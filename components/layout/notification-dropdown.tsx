@@ -29,6 +29,7 @@ import {
   useRejectFriendRequest as useRejectFriendRequestContact,
 } from "@/hooks/use-contact";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 const getNotificationIcon = (type: string) => {
   switch (type) {
@@ -59,6 +60,7 @@ const getNotificationBgColor = (type: string) => {
 };
 
 export function NotificationDropdown() {
+  const router = useRouter();
   const getSenderName = (noti: Notification) => {
     if (noti.senderName?.trim()) return noti.senderName.trim();
     if (typeof noti.senderId === "object" && noti.senderId?.displayName) {
@@ -111,6 +113,11 @@ export function NotificationDropdown() {
     if (!requestId) return;
     setAcceptingIds([...acceptingIds, notificationId]);
     acceptFriendRequest(requestId, {
+      onSuccess: (result) => {
+        if (result?.conversationId) {
+          router.push(`/messages/${result.conversationId}`);
+        }
+      },
       onSettled: () => {
         setAcceptingIds(acceptingIds.filter((id) => id !== notificationId));
       },

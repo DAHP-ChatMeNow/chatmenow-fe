@@ -1,14 +1,36 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Loader2, ChevronLeft, MessageCircle } from "lucide-react";
+import {
+  Loader2,
+  ChevronLeft,
+  MessageCircle,
+  MoreHorizontal,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PresignedAvatar } from "@/components/ui/presigned-avatar";
-import { useGetFriendProfile } from "@/hooks/use-contact";
+import {
+  useGetFriendProfile,
+  useRemoveFriend,
+} from "@/hooks/use-contact";
 import { useGetPrivateConversation } from "@/hooks/use-chat";
 import { formatPresenceStatus } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export default function FriendProfilePage() {
   const params = useParams();
@@ -18,6 +40,9 @@ export default function FriendProfilePage() {
   const { data: friend, isLoading, error } = useGetFriendProfile(userId);
   const { mutate: getPrivateConversation, isPending: isOpeningChat } =
     useGetPrivateConversation();
+  const { mutate: removeFriend, isPending: isRemovingFriend } =
+    useRemoveFriend();
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
 
   const statusText = useMemo(
     () =>
@@ -35,6 +60,17 @@ export default function FriendProfilePage() {
     getPrivateConversation(friend.id, {
       onSuccess: (conversation) => {
         router.push(`/messages/${conversation.id}`);
+      },
+    });
+  };
+
+  const handleRemoveFriend = () => {
+    if (!friend?.id) return;
+
+    removeFriend(friend.id, {
+      onSuccess: () => {
+        setShowRemoveConfirm(false);
+        router.back();
       },
     });
   };
@@ -79,18 +115,42 @@ export default function FriendProfilePage() {
                       fallbackClassName="text-3xl font-bold"
                     />
 
-                    <Button
-                      onClick={handleOpenChat}
-                      disabled={isOpeningChat}
-                      className="rounded-xl"
-                    >
-                      {isOpeningChat ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <MessageCircle className="w-4 h-4 mr-2" />
-                      )}
-                      Nhắn tin
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        onClick={handleOpenChat}
+                        disabled={isOpeningChat}
+                        className="rounded-xl"
+                      >
+                        {isOpeningChat ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <MessageCircle className="w-4 h-4 mr-2" />
+                        )}
+                        Nhắn tin
+                      </Button>
+
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="rounded-xl"
+                            aria-label="Tuỳ chọn bạn bè"
+                          >
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem
+                            className="gap-2 text-red-600 cursor-pointer focus:text-red-600 focus:bg-red-50"
+                            onClick={() => setShowRemoveConfirm(true)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Xóa bạn
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
 
                   <div className="mt-3">
@@ -131,6 +191,53 @@ export default function FriendProfilePage() {
           )}
         </div>
       </ScrollArea>
+
+      <Dialog open={showRemoveConfirm} onOpenChange={setShowRemoveConfirm}>
+        <DialogContent className="max-w-md gap-0 p-0 bg-white border-0 shadow-2xl dark:bg-slate-800 rounded-2xl">
+          <div className="px-6 pt-6 pb-4 space-y-3">
+            <div className="flex justify-center">
+              <div className="flex items-center justify-center w-16 h-16 bg-red-100 rounded-full dark:bg-red-900/30">
+                <Trash2 className="w-8 h-8 text-red-600 dark:text-red-400" />
+              </div>
+            </div>
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-center text-slate-900 dark:text-white">
+                Xóa bạn bè?
+              </DialogTitle>
+            </DialogHeader>
+            <p className="px-2 text-sm leading-relaxed text-center text-slate-600 dark:text-slate-400">
+              Bạn có chắc muốn xóa {friend?.displayName} khỏi danh sách bạn bè không?
+            </p>
+          </div>
+
+          <div className="h-px bg-slate-200 dark:bg-slate-700"></div>
+
+          <div className="flex gap-3 p-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowRemoveConfirm(false)}
+              disabled={isRemovingFriend}
+              className="flex-1 font-semibold transition-all bg-white border-2 h-11 border-slate-200 dark:border-slate-600 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl"
+            >
+              Hủy
+            </Button>
+            <Button
+              onClick={handleRemoveFriend}
+              disabled={isRemovingFriend}
+              className="flex-1 font-semibold text-white transition-all bg-red-600 shadow-lg h-11 hover:bg-red-700 rounded-xl shadow-red-600/25 hover:shadow-red-600/40"
+            >
+              {isRemovingFriend ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Đang xóa...
+                </>
+              ) : (
+                "Xóa"
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

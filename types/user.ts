@@ -19,6 +19,7 @@ export interface User {
   isFriend?: boolean;
   mutualFriendsCount?: number;
   friends: string[];
+  blockedUsers?: string[];
   accountStatus?: AccountStatus;
   suspendedUntil?: string | Date;
   statusReason?: string;

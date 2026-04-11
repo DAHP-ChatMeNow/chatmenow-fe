@@ -11,6 +11,8 @@ interface ChatItemProps {
   time: string;
   unread: number;
   isActive: boolean;
+  isBlocked?: boolean;
+  blockedLabel?: string;
 }
 
 export function ChatItem({
@@ -21,6 +23,8 @@ export function ChatItem({
   time,
   unread,
   isActive,
+  isBlocked,
+  blockedLabel,
 }: ChatItemProps) {
   return (
     <Link href={`/messages/${id}`}>
@@ -29,7 +33,7 @@ export function ChatItem({
           isActive
             ? "bg-blue-50/80 border-blue-200 shadow-sm"
             : "bg-transparent border-slate-100 hover:bg-white hover:border-slate-200"
-        }`}
+        } ${isBlocked ? "opacity-80" : ""}`}
       >
         <div className="relative">
           <PresignedAvatar
@@ -38,6 +42,11 @@ export function ChatItem({
             className="h-11 w-11 border-2 border-white shadow-sm ring-1 ring-slate-100"
             fallbackClassName="bg-slate-200 text-slate-600 font-bold text-xs"
           />
+          {isBlocked && (
+            <span className="absolute -bottom-1 -right-1 rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-white shadow-sm">
+              Chặn
+            </span>
+          )}
         </div>
 
         <div className="flex-1 min-w-0">
@@ -55,7 +64,7 @@ export function ChatItem({
             <p
               className={`text-[13px] truncate pr-2 ${unread > 0 ? "text-slate-900 font-medium" : "text-slate-500"}`}
             >
-              {lastMsg}
+              {blockedLabel || lastMsg}
             </p>
             {unread > 0 && (
               <Badge className="bg-blue-600 hover:bg-blue-600 h-5 min-w-[20px] rounded-full text-[10px] flex items-center justify-center p-0">

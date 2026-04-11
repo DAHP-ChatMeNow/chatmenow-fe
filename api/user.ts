@@ -53,6 +53,23 @@ export interface GetFriendProfileResponse {
   user: User;
 }
 
+export interface BlockedUsersResponse {
+  success: boolean;
+  blockedUsers: User[];
+  total: number;
+}
+
+export interface BlockUserResponse {
+  success: boolean;
+  message: string;
+  blockedUser: Pick<User, "id" | "_id" | "displayName" | "avatar">;
+}
+
+export interface UnblockUserResponse {
+  success: boolean;
+  message: string;
+}
+
 const mapMongoUser = (user: User): User => {
   if (!user) return user;
   return {
@@ -180,6 +197,38 @@ export const userService = {
       `/users/friends/${userId}/profile`,
     );
     return mapMongoUser(res.data.user);
+  },
+
+  /**
+   * Get blocked users of current user
+   */
+  getBlockedUsers: async () => {
+    const res = await api.get<BlockedUsersResponse>("/users/blocked");
+    res.data.blockedUsers = (res.data.blockedUsers || []).map((user: any) =>
+      mapMongoUser(user),
+    );
+    return res.data;
+  },
+
+  /**
+   * Block a user
+   */
+  blockUser: async (userId: string) => {
+    const res = await api.post<BlockUserResponse>(`/users/${userId}/block`);
+    return {
+      ...res.data,
+      blockedUser: mapMongoUser(res.data.blockedUser as User),
+    };
+  },
+
+  /**
+   * Unblock a user
+   */
+  unblockUser: async (userId: string) => {
+    const res = await api.delete<UnblockUserResponse>(
+      `/users/blocked/${userId}`,
+    );
+    return res.data;
   },
 
   /**

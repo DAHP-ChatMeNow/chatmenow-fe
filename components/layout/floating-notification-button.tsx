@@ -26,8 +26,8 @@ import {
   useAcceptFriendRequest as useAcceptFriendRequestContact,
   useRejectFriendRequest as useRejectFriendRequestContact,
 } from "@/hooks/use-contact";
-import { Notification } from "@/types/notification";
 import { useRouter } from "next/navigation";
+import { Notification } from "@/types/notification";
 import Link from "next/link";
 
 const getNotificationIcon = (type: string) => {
@@ -203,6 +203,11 @@ export function FloatingNotificationButton() {
     if (!requestId) return;
     setAcceptingIds([...acceptingIds, notificationId]);
     acceptFriendRequest(requestId, {
+      onSuccess: (result) => {
+        if (result?.conversationId) {
+          router.push(`/messages/${result.conversationId}`);
+        }
+      },
       onSettled: () => {
         setAcceptingIds(acceptingIds.filter((id) => id !== notificationId));
       },

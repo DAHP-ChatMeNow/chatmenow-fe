@@ -16,6 +16,7 @@ import { MessageSkeleton } from "@/components/skeletons/message-skeleton";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useSocket } from "@/components/providers/socket-provider";
 import { Message } from "@/types/message";
+import { toast } from "sonner";
 
 const getMessageSenderId = (message: Message): string | undefined => {
   if (!message.senderId) return undefined;
@@ -113,6 +114,12 @@ export default function ChatDetailPage() {
   const { data: conversation } = useConversation(conversationId);
   const { data: messagesData, isLoading, error } = useMessages(conversationId);
   const messages = messagesData?.messages || [];
+  const isConversationBlocked = Boolean((conversation as any)?.isBlocked);
+  const blockedMessage = (conversation as any)?.blockedByMe
+    ? "Bạn đã chặn người này. Mở chặn để tiếp tục trò chuyện."
+    : (conversation as any)?.blockedByOther
+      ? "Bạn không thể chat vì người này đã chặn bạn."
+      : "Cuộc trò chuyện đang bị chặn.";
 
   // Hook tập trung logic phân biệt private/group - tự động fetch partner nếu cần
   const {
@@ -180,6 +187,11 @@ export default function ChatDetailPage() {
 
   const handleSendMessage = (text: string) => {
     if (!text.trim() || isPending) return;
+
+    if (isConversationBlocked) {
+      toast.error(blockedMessage);
+      return;
+    }
 
     sendMessage({
       conversationId,
@@ -342,9 +354,15 @@ export default function ChatDetailPage() {
         </div>
       </ScrollArea>
 
+      {isConversationBlocked && (
+        <div className="mx-3 mb-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 md:mx-6">
+          {blockedMessage}
+        </div>
+      )}
+
       <ChatInput
         onSend={handleSendMessage}
-        disabled={isPending}
+        disabled={isPending || isConversationBlocked}
         onTyping={handleTyping}
         onStopTyping={handleStopTyping}
       />
