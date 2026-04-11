@@ -1,6 +1,7 @@
 import { useAuthStore } from "@/store/use-auth-store";
 import { BASE_API_URL } from "@/types/utils";
 import axios from "axios";
+import { toast } from "sonner";
 
 const api = axios.create({
   baseURL: BASE_API_URL,
@@ -47,6 +48,28 @@ const isAccountStatusRejection = (error: unknown) => {
   );
 };
 
+const isSessionInvalidationRejection = (error: unknown) => {
+  if (!axios.isAxiosError(error)) return false;
+
+  const status = error.response?.status;
+  if (status !== 401 && status !== 403) return false;
+
+  const data =
+    (error.response?.data as
+      | { code?: string; errorCode?: string; message?: string }
+      | undefined) ?? {};
+
+  const code = data.code || data.errorCode;
+  if (code === "SESSION_INVALID" || code === "SESSION_EXPIRED") {
+    return true;
+  }
+
+  const message = (data.message || "").toLowerCase();
+  return /(đăng nhập trên thiết bị khác|dang nhap tren thiet bi khac|logged in on another device|session.*(invalid|expired))/i.test(
+    message,
+  );
+};
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -56,10 +79,22 @@ api.interceptors.response.use(
       requestUrl,
     );
 
-    if (hasToken && !isAuthEndpoint && isAccountStatusRejection(error)) {
+    if (
+      hasToken &&
+      !isAuthEndpoint &&
+      (isAccountStatusRejection(error) || isSessionInvalidationRejection(error))
+    ) {
+      const responseMessage =
+        (error?.response?.data as { message?: string } | undefined)?.message ||
+        "";
+      const fallbackMessage = isSessionInvalidationRejection(error)
+        ? "Tài khoản đã đăng nhập trên thiết bị khác. Vui lòng đăng nhập lại."
+        : "Phiên đăng nhập đã hết hiệu lực. Vui lòng đăng nhập lại.";
+
       useAuthStore.getState().logout();
 
       if (typeof window !== "undefined") {
+        toast.error(responseMessage || fallbackMessage);
         const isAdminPath = window.location.pathname.startsWith("/admin");
         window.location.replace(isAdminPath ? "/admin/login" : "/login");
       }

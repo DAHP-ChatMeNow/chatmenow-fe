@@ -9,6 +9,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useMemo, useState } from "react";
 import { Eye, EyeOff, Mail, Lock, ShieldCheck } from "lucide-react";
+import { getDeviceId, getDeviceName } from "@/lib/device-utils";
 
 const loginSchema = z.object({
   email: z.string().email("Email không hợp lệ"),
@@ -64,6 +65,8 @@ export default function AdminLoginPage() {
       {
         ...data,
         turnstileToken,
+        deviceId: getDeviceId(),
+        deviceName: getDeviceName(),
       },
       {
         onError: (error) => {

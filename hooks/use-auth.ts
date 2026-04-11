@@ -192,6 +192,9 @@ export const useMe = () => {
 
 export const useRememberedLogin = () => {
   const setAuth = useAuthStore((state) => state.setAuth);
+  const removeRememberedAccount = useAuthStore(
+    (state) => state.removeRememberedAccount,
+  );
   const router = useRouter();
 
   return useMutation<AuthResponse, unknown, RememberedLoginPayload>({
@@ -204,7 +207,8 @@ export const useRememberedLogin = () => {
       setAuth(data.user, data.token, data.role, data.rememberToken);
       router.push(getDefaultRouteForClient());
     },
-    onError: (error) => {
+    onError: (error, variables) => {
+      removeRememberedAccount(variables.rememberToken);
       toast.error(getErrorMessage(error));
     },
   });

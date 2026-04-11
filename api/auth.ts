@@ -11,7 +11,7 @@ export type LoginPayload = {
   email: string;
   password: string;
   rememberAccount?: boolean;
-  deviceId?: string;
+  deviceId: string;
   deviceName?: string;
   turnstileToken?: string;
 };

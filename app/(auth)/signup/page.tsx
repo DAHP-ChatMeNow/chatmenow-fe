@@ -16,6 +16,9 @@ const registerSchema = z
     email: z.string().email("Email không hợp lệ"),
     password: z.string().min(6, "Mật khẩu phải có ít nhất 6 ký tự"),
     confirmPassword: z.string().min(6, "Vui lòng nhập lại mật khẩu"),
+    acceptTerms: z.boolean().refine((value) => value, {
+      message: "Bạn cần đồng ý với điều khoản để tiếp tục",
+    }),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Mật khẩu không khớp",
@@ -38,7 +41,11 @@ export default function SignupPage() {
   });
 
   const onSubmit = (data: RegisterFormValues) => {
-    register(data);
+    register({
+      displayName: data.displayName,
+      email: data.email,
+      password: data.password,
+    });
   };
 
   return (
@@ -177,6 +184,39 @@ export default function SignupPage() {
                 <p className="flex items-center gap-1 text-xs text-red-600">
                   <span className="inline-block w-1 h-1 bg-red-600 rounded-full"></span>
                   {errors.confirmPassword.message}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="flex items-start gap-3 text-sm text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 mt-0.5 accent-blue-600"
+                  {...registerField("acceptTerms")}
+                />
+                <span>
+                  Tôi đã đọc và đồng ý với{" "}
+                  <Link
+                    href="/policy#terms"
+                    className="font-semibold text-blue-600 hover:text-blue-700 hover:underline"
+                  >
+                    Điều khoản sử dụng
+                  </Link>{" "}
+                  và{" "}
+                  <Link
+                    href="/policy#privacy"
+                    className="font-semibold text-blue-600 hover:text-blue-700 hover:underline"
+                  >
+                    Chính sách bảo mật
+                  </Link>
+                  .
+                </span>
+              </label>
+              {errors.acceptTerms && (
+                <p className="flex items-center gap-1 text-xs text-red-600">
+                  <span className="inline-block w-1 h-1 bg-red-600 rounded-full"></span>
+                  {errors.acceptTerms.message}
                 </p>
               )}
             </div>
