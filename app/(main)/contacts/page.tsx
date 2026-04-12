@@ -11,6 +11,8 @@ import { FriendRequestsList } from "@/components/contact/friend-requests-list";
 import { SearchAndAddFriend } from "@/components/contact/search-and-add-friend";
 import { FriendsList } from "@/components/contact/friends-list";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { QRDialog } from "@/components/contact/qr-dialog";
+import { QrCode } from "lucide-react";
 
 export default function ContactsPage() {
   const router = useRouter();
@@ -20,6 +22,7 @@ export default function ContactsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showRequests, setShowRequests] = useState(false);
   const [showSearchDialog, setShowSearchDialog] = useState(false);
+  const [showQRDialog, setShowQRDialog] = useState(false);
 
   const contacts = contactsData?.contacts || [];
   const friendRequests = friendRequestsData?.requests || [];
@@ -74,6 +77,19 @@ export default function ContactsPage() {
                 <p className="text-xs text-slate-400">0 bạn</p>
               </div>
             </div>
+
+            <div 
+              className="flex items-center gap-4 p-4 rounded-xl border border-slate-100 hover:bg-slate-50 cursor-pointer transition-all"
+              onClick={() => setShowQRDialog(true)}
+            >
+              <div className="p-3 rounded-lg bg-emerald-50 text-emerald-500">
+                <QrCode className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-semibold text-sm text-black">Mã QR</p>
+                <p className="text-xs text-slate-400">Kết bạn qua mã QR</p>
+              </div>
+            </div>
           </div>
 
           {/* Search */}
@@ -117,6 +133,12 @@ export default function ContactsPage() {
       <SearchAndAddFriend 
         open={showSearchDialog} 
         onOpenChange={setShowSearchDialog} 
+      />
+
+      {/* QR Code Dialog */}
+      <QRDialog
+        open={showQRDialog}
+        onOpenChange={setShowQRDialog}
       />
     </div>
   );
