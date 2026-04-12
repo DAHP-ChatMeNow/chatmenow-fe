@@ -42,6 +42,8 @@ import {
   AiPostChatPopup,
   type AiPopupMessage,
 } from "@/components/post/ai-post-chat-popup";
+import { StoryPrivacyDialog } from "@/components/post/story-privacy-dialog";
+import { StoryPrivacy } from "@/types/story";
 import { AiSuggestion } from "@/api/post";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -107,6 +109,10 @@ export default function BlogPage() {
   const [aiPopupOptions, setAiPopupOptions] = useState<string[]>([]);
   const [isStoryViewerOpen, setIsStoryViewerOpen] = useState(false);
   const [storyViewerGroupIndex, setStoryViewerGroupIndex] = useState(0);
+  const [pendingStoryFile, setPendingStoryFile] = useState<File | null>(null);
+  const [pendingStoryVideoDuration, setPendingStoryVideoDuration] = useState<number | undefined>();
+  const [showStoryPrivacyDialog, setShowStoryPrivacyDialog] = useState(false);
+  const [storyPrivacy, setStoryPrivacy] = useState<StoryPrivacy>("friends");
   const storyInputRef = useRef<HTMLInputElement>(null);
   const aiPendingMessageCounterRef = useRef(0);
   const user = useAuthStore((state) => state.user);
@@ -244,15 +250,26 @@ export default function BlogPage() {
       }
     }
 
+    setPendingStoryFile(file);
+    setPendingStoryVideoDuration(videoDuration);
+    setShowStoryPrivacyDialog(true);
+    e.target.value = "";
+  };
+
+  const confirmCreateStory = () => {
+    if (!pendingStoryFile) return;
+
     createStory(
       {
-        mediaFile: file,
-        privacy: "friends",
-        videoDuration,
+        mediaFile: pendingStoryFile,
+        privacy: storyPrivacy,
+        videoDuration: pendingStoryVideoDuration,
       },
       {
         onSettled: () => {
-          e.target.value = "";
+          setPendingStoryFile(null);
+          setShowStoryPrivacyDialog(false);
+          setStoryPrivacy("friends");
         },
       },
     );
@@ -791,6 +808,22 @@ export default function BlogPage() {
           if (!aiPopupPostId) return;
           void sendAiPopupMessage(aiPopupPostId, option);
         }}
+      />
+
+      <StoryPrivacyDialog
+        open={showStoryPrivacyDialog}
+        onOpenChange={(val) => {
+          setShowStoryPrivacyDialog(val);
+          if (!val) {
+            setPendingStoryFile(null);
+            setStoryPrivacy("friends");
+          }
+        }}
+        file={pendingStoryFile}
+        privacy={storyPrivacy}
+        onPrivacyChange={setStoryPrivacy}
+        onConfirm={confirmCreateStory}
+        isCreating={isCreatingStory}
       />
     </div>
   );
