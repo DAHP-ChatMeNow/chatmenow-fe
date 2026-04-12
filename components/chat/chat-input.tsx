@@ -10,6 +10,7 @@ import {
   Smile,
   Loader2,
   Square,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -31,6 +32,8 @@ interface ChatInputProps {
   isUploadingAttachments?: boolean;
   uploadProgressPercent?: number;
   uploadProgressLabel?: string;
+  replyPreview?: string;
+  onCancelReply?: () => void;
   disabled?: boolean;
   onTyping?: () => void;
   onStopTyping?: () => void;
@@ -42,6 +45,8 @@ export function ChatInput({
   isUploadingAttachments,
   uploadProgressPercent,
   uploadProgressLabel,
+  replyPreview,
+  onCancelReply,
   disabled,
   onTyping,
   onStopTyping,
@@ -258,6 +263,25 @@ export function ChatInput({
 
   return (
     <div className="px-3 py-4 md:px-6 md:py-5 border-t border-slate-200/60 bg-white/88 backdrop-blur-xl">
+      {replyPreview && (
+        <div className="w-full max-w-[1240px] mx-auto mb-3 flex items-start justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-3 py-2.5">
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+              Đang trả lời
+            </div>
+            <div className="mt-0.5 truncate text-sm text-slate-700">{replyPreview}</div>
+          </div>
+          <button
+            type="button"
+            onClick={onCancelReply}
+            className="rounded-full p-1 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700"
+            aria-label="Hủy trả lời"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {isUploadingAttachments && (
         <div className="w-full max-w-[1240px] mx-auto mb-3">
           <div className="mb-1 flex items-center justify-between text-[11px] text-slate-500">

@@ -30,6 +30,19 @@ export interface MessagesResponse {
   };
 }
 
+export interface PinnedMessageItem {
+  messageId: string;
+  pinnedAt?: string;
+  pinnedBy?: string;
+  message: Message;
+}
+
+export interface PinnedMessagesResponse {
+  success?: boolean;
+  pinnedMessages: PinnedMessageItem[];
+  latestPinnedMessage: Message | null;
+}
+
 export interface GetMessagesParams {
   limit?: number;
   beforeId?: string;
@@ -57,6 +70,7 @@ export interface SendMessagePayload {
   content: string;
   type: string;
   attachments?: MessageAttachment[];
+  replyToMessageId?: string;
 }
 
 export interface PartnerResponse {
@@ -77,6 +91,27 @@ export interface AiConversationResponse {
 export interface UpdateGroupConversationPayload {
   name?: string;
   groupAvatar?: string;
+  pinManagementEnabled?: boolean;
+  joinApprovalEnabled?: boolean;
+}
+
+export interface GroupJoinInfoResponse {
+  success?: boolean;
+  conversationId: string;
+  name: string;
+  groupAvatar?: string;
+  memberCount: number;
+  isMember: boolean;
+  joinApprovalEnabled: boolean;
+}
+
+export interface JoinGroupByLinkResponse {
+  success?: boolean;
+  joined: boolean;
+  alreadyMember: boolean;
+  requestCreated: boolean;
+  pendingApproval: boolean;
+  conversation: Conversation | null;
 }
 
 export interface SendAiMessagePayload {
@@ -239,6 +274,38 @@ const normalizeMessageList = (messages: any[]): Message[] => {
     .filter(Boolean)
     .map((message) => mapMongoId(message))
     .filter((message) => typeof message === "object");
+};
+
+const normalizePinnedMessagesPayload = (payload: any): PinnedMessagesResponse => {
+  const source = payload?.data && typeof payload.data === "object"
+    ? payload.data
+    : payload;
+
+  const pinnedMessages = Array.isArray(source?.pinnedMessages)
+    ? source.pinnedMessages
+        .map((item: any) => {
+          const message = item?.message ? mapMongoId(item.message) : null;
+          if (!message) return null;
+
+          return {
+            messageId: String(item?.messageId || message.id || message._id || ""),
+            pinnedAt: item?.pinnedAt ? String(item.pinnedAt) : undefined,
+            pinnedBy: item?.pinnedBy ? String(item.pinnedBy) : undefined,
+            message,
+          };
+        })
+        .filter(Boolean)
+    : [];
+
+  const latestPinnedMessage = source?.latestPinnedMessage
+    ? mapMongoId(source.latestPinnedMessage)
+    : pinnedMessages[0]?.message || null;
+
+  return {
+    success: source?.success,
+    pinnedMessages,
+    latestPinnedMessage,
+  };
 };
 
 const pickMessagePayload = (payload: any): Message => {
@@ -428,6 +495,35 @@ export const chatService = {
       res.data.messages = res.data.messages.map((msg: any) => mapMongoId(msg));
     }
     return res.data;
+  },
+
+  getPinnedMessages: async (
+    conversationId: string,
+  ): Promise<PinnedMessagesResponse> => {
+    const res = await api.get<any>(
+      `/chat/conversations/${conversationId}/pinned-messages`,
+    );
+    return normalizePinnedMessagesPayload(res.data);
+  },
+
+  pinMessage: async (
+    conversationId: string,
+    messageId: string,
+  ): Promise<PinnedMessagesResponse> => {
+    const res = await api.post<any>(
+      `/chat/conversations/${conversationId}/pinned-messages/${messageId}`,
+    );
+    return normalizePinnedMessagesPayload(res.data);
+  },
+
+  unpinMessage: async (
+    conversationId: string,
+    messageId: string,
+  ): Promise<PinnedMessagesResponse> => {
+    const res = await api.delete<any>(
+      `/chat/conversations/${conversationId}/pinned-messages/${messageId}`,
+    );
+    return normalizePinnedMessagesPayload(res.data);
   },
 
   getUnreadSummary: async (
@@ -721,6 +817,41 @@ export const chatService = {
       `/chat/conversations/${conversationId}/partner`,
     );
     return mapMongoId(res.data.partner);
+  },
+
+  getGroupJoinInfo: async (
+    conversationId: string,
+  ): Promise<GroupJoinInfoResponse> => {
+    const res = await api.get<any>(
+      `/chat/conversations/${conversationId}/join-info`,
+    );
+    return {
+      success: res.data?.success,
+      conversationId: String(
+        res.data?.conversationId || conversationId,
+      ),
+      name: String(res.data?.name || "Nhóm chat"),
+      groupAvatar: res.data?.groupAvatar
+        ? String(res.data.groupAvatar)
+        : undefined,
+      memberCount: Number(res.data?.memberCount || 0),
+      isMember: Boolean(res.data?.isMember),
+      joinApprovalEnabled: Boolean(res.data?.joinApprovalEnabled),
+    };
+  },
+
+  joinGroupByLink: async (
+    conversationId: string,
+  ): Promise<JoinGroupByLinkResponse> => {
+    const res = await api.post<any>(`/chat/conversations/${conversationId}/join`);
+    return {
+      success: res.data?.success,
+      joined: Boolean(res.data?.joined),
+      alreadyMember: Boolean(res.data?.alreadyMember),
+      requestCreated: Boolean(res.data?.requestCreated),
+      pendingApproval: Boolean(res.data?.pendingApproval),
+      conversation: res.data?.conversation ? mapMongoId(res.data.conversation) : null,
+    };
   },
 
   updateGroupConversation: async (

@@ -3,6 +3,7 @@
 import { Fragment, useRef, useEffect, useState, useCallback, useMemo, type MouseEvent } from "react";
 import {
   FileAudio2,
+  Copy,
   MoreVertical,
   Pause,
   Paperclip,
@@ -10,6 +11,9 @@ import {
   PhoneCall,
   PhoneMissed,
   PhoneOff,
+  Reply,
+  Pin,
+  Share2,
 } from "lucide-react";
 import Image from "next/image";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -19,16 +23,26 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ChatHeader } from "@/components/chat/chat-header";
 import { ChatInput } from "@/components/chat/chat-input";
 import { useParams, useRouter } from "next/navigation";
 import {
   useAiConversation,
   useConversation,
+  useConversations,
   useDeleteMessageForMe,
-  useEditMessage,
   useMarkConversationAsRead,
   useMessages,
+  usePinnedMessages,
+  usePinMessage,
+  useUnpinMessage,
   useUnsendMessage,
   useSendAiMessage,
   useSendMessage,
@@ -45,6 +59,7 @@ import { Message } from "@/types/message";
 import { MessageAttachment } from "@/types/message";
 import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useQueryClient } from "@tanstack/react-query";
 import { chatService, MessagesResponse } from "@/api/chat";
 import { usePresignedUrl } from "@/hooks/use-profile";
@@ -53,6 +68,10 @@ import {
   decodeFriendCardPayload,
   FRIEND_CARD_ATTACHMENT_TYPE,
 } from "@/lib/friend-card";
+import {
+  decodeGroupCardPayload,
+  GROUP_CARD_ATTACHMENT_TYPE,
+} from "@/lib/group-card";
 
 type ChatBackgroundKey = "default" | "sky" | "sunset" | "mint" | "night";
 
@@ -176,6 +195,111 @@ const attachmentKeyOrUrl = (attachment: MessageAttachment) => {
   return attachment.url;
 };
 
+const hasUrlInContent = (content?: string) =>
+  /(?:https?:\/\/|www\.)\S+/i.test(String(content || ""));
+
+const FORWARDED_MESSAGE_MARKER = "[chatmenow-forwarded]";
+
+const parseForwardedMessageContent = (content?: string) => {
+  const rawContent = String(content || "");
+  if (!rawContent.startsWith(FORWARDED_MESSAGE_MARKER)) {
+    return {
+      isForwarded: false,
+      displayContent: rawContent,
+    };
+  }
+
+  return {
+    isForwarded: true,
+    displayContent: rawContent
+      .slice(FORWARDED_MESSAGE_MARKER.length)
+      .replace(/^\n+/, ""),
+  };
+};
+
+const getForwardableAttachments = (attachments?: MessageAttachment[]) =>
+  (attachments || []).filter((attachment) => {
+    const source = String(attachment?.key || attachment?.url || "").trim();
+    return Boolean(source);
+  });
+
+const isMessageForwardable = (message: Message) => {
+  if (!message || message.isUnsent || message.senderSource === "ai") return false;
+
+  const { displayContent } = parseForwardedMessageContent(message.content);
+  const content = String(displayContent || "").trim();
+  const attachments = getForwardableAttachments(message.attachments);
+
+  return attachments.length > 0 || hasUrlInContent(content);
+};
+
+const getConversationForwardLabel = (
+  conversation: any,
+  currentUserId?: string,
+): string => {
+  const name = String(conversation?.name || "").trim();
+  if (name) return name;
+
+  if (conversation?.type === "group") return "Nhóm chat";
+  if (conversation?.type === "private") {
+    const members = Array.isArray(conversation?.members)
+      ? conversation.members
+      : [];
+    const partner = members.find((member: any) => {
+      const memberUserId =
+        typeof member?.userId === "string"
+          ? member.userId
+          : member?.userId?._id || member?.userId?.id;
+      return memberUserId && memberUserId !== currentUserId;
+    });
+
+    const partnerName = String(
+      partner?.userId?.displayName ||
+        partner?.displayName ||
+        conversation?.partner?.displayName ||
+        conversation?.otherUser?.displayName ||
+        "",
+    ).trim();
+
+    return partnerName || "Bạn bè";
+  }
+
+  return "Cuộc trò chuyện";
+};
+
+const getReplyToMessageId = (value: unknown): string | undefined => {
+  if (!value) return undefined;
+  if (typeof value === "string") return value;
+
+  const obj = value as { _id?: string; id?: string };
+  return obj._id || obj.id;
+};
+
+const getReplyMessageFromPayload = (value: unknown): Message | undefined => {
+  if (!value || typeof value === "string") return undefined;
+  if (typeof value !== "object") return undefined;
+  return value as Message;
+};
+
+const getReplyMessageFromSnapshot = (snapshot: unknown): Message | undefined => {
+  if (!snapshot || typeof snapshot !== "object") return undefined;
+
+  const raw = snapshot as {
+    content?: string;
+    type?: string;
+    attachments?: MessageAttachment[];
+  };
+
+  return {
+    id: "reply-preview",
+    conversationId: "reply-preview",
+    content: String(raw.content || ""),
+    type: String(raw.type || "text"),
+    attachments: Array.isArray(raw.attachments) ? raw.attachments : [],
+    createdAt: new Date().toISOString(),
+  };
+};
+
 function FriendCardBubble({
   attachment,
   isMe,
@@ -268,6 +392,180 @@ function FriendCardBubble({
             Mở danh thiếp
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function GroupCardBubble({
+  attachment,
+  isMe,
+}: {
+  attachment: MessageAttachment;
+  isMe: boolean;
+}) {
+  const router = useRouter();
+  const card = decodeGroupCardPayload(attachment.url);
+  const [isCheckingMembership, setIsCheckingMembership] = useState(false);
+  const [isJoiningGroup, setIsJoiningGroup] = useState(false);
+  const [isMember, setIsMember] = useState<boolean | null>(null);
+  const [requiresApproval, setRequiresApproval] = useState(false);
+
+  if (!card) {
+    return null;
+  }
+
+  useEffect(() => {
+    let active = true;
+
+    const run = async () => {
+      try {
+        setIsCheckingMembership(true);
+        const info = await chatService.getGroupJoinInfo(card.conversationId);
+        if (!active) return;
+        setIsMember(Boolean(info.isMember));
+        setRequiresApproval(Boolean(info.joinApprovalEnabled));
+      } catch {
+        if (!active) return;
+        setIsMember(false);
+        setRequiresApproval(false);
+      } finally {
+        if (active) {
+          setIsCheckingMembership(false);
+        }
+      }
+    };
+
+    void run();
+
+    return () => {
+      active = false;
+    };
+  }, [card.conversationId]);
+
+  const handleOpenGroup = () => {
+    router.push(`/messages/${card.conversationId}`);
+  };
+
+  const handlePrimaryAction = async (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+
+    if (isCheckingMembership || isJoiningGroup) return;
+
+    if (isMember) {
+      handleOpenGroup();
+      return;
+    }
+
+    try {
+      setIsJoiningGroup(true);
+      const result = await chatService.joinGroupByLink(card.conversationId);
+      if (result.pendingApproval) {
+        toast.success("Đã gửi yêu cầu tham gia. Chờ admin duyệt.");
+        return;
+      }
+
+      setIsMember(true);
+      toast.success(
+        result.alreadyMember ? "Bạn đã ở trong nhóm này" : "Gia nhập nhóm thành công",
+      );
+      router.push(`/messages/${card.conversationId}`);
+    } catch (error: unknown) {
+      const message =
+        typeof error === "object" &&
+        error !== null &&
+        "response" in error &&
+        typeof (error as { response?: { data?: { message?: string } } }).response
+          ?.data?.message === "string"
+          ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+          : "Không thể gia nhập nhóm";
+      toast.error(message);
+    } finally {
+      setIsJoiningGroup(false);
+    }
+  };
+
+  const handleCopyGroupLink = async (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (typeof navigator === "undefined") return;
+
+    try {
+      const shareUrl = new URL(card.profileUrl, window.location.origin).toString();
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success("Đã sao chép link nhóm");
+    } catch {
+      toast.error("Không thể sao chép link nhóm");
+    }
+  };
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => {
+        if (isMember) {
+          handleOpenGroup();
+        }
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          if (isMember) {
+            handleOpenGroup();
+          }
+        }
+      }}
+      className={`w-full max-w-[300px] rounded-2xl border p-3 text-left shadow-sm transition-transform hover:scale-[1.01] ${
+        isMe
+          ? "border-blue-400/40 bg-white/10 text-white"
+          : "border-slate-200 bg-white text-slate-800"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <PresignedAvatar
+          avatarKey={card.avatar}
+          displayName={card.displayName}
+          className="h-12 w-12 shrink-0"
+          fallbackClassName={isMe ? "bg-white/20 text-white" : "bg-slate-200 text-slate-600"}
+        />
+        <div className="min-w-0 flex-1">
+          <div className={`truncate text-sm font-semibold ${isMe ? "text-white" : "text-slate-900"}`}>
+            {card.displayName}
+          </div>
+          <div className={`truncate text-xs ${isMe ? "text-blue-100" : "text-slate-500"}`}>
+            {card.memberCount ? `${card.memberCount} thành viên` : "Danh thiếp nhóm"}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 flex gap-2">
+        <Button
+          type="button"
+          size="sm"
+          className="flex-1 rounded-xl"
+          onClick={handlePrimaryAction}
+          disabled={isCheckingMembership || isJoiningGroup}
+        >
+          <Share2 className="mr-2 h-4 w-4" />
+          {isCheckingMembership
+            ? "Đang kiểm tra..."
+            : isJoiningGroup
+              ? "Đang gia nhập..."
+              : isMember
+                ? "Mở nhóm"
+                : requiresApproval
+                  ? "Gửi yêu cầu"
+                  : "Gia nhập nhóm"}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="rounded-xl"
+          onClick={handleCopyGroupLink}
+        >
+          <Copy className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   );
@@ -421,6 +719,10 @@ function MessageAttachmentItem({
     return <FriendCardBubble attachment={attachment} isMe={isMe} />;
   }
 
+  if (attachment.fileType === GROUP_CARD_ATTACHMENT_TYPE) {
+    return <GroupCardBubble attachment={attachment} isMe={isMe} />;
+  }
+
   const rawKeyOrUrl = attachmentKeyOrUrl(attachment);
   const direct = isDirectMediaUrl(rawKeyOrUrl);
   const { data: presigned } = usePresignedUrl(
@@ -516,6 +818,14 @@ const resolveTypeFromFile = (file: File): string => {
   return "file";
 };
 
+const resolveMessageTypeFromAttachment = (attachment: MessageAttachment): string => {
+  const mime = String(attachment.fileType || "").toLowerCase();
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("audio/")) return "audio";
+  if (mime.startsWith("video/")) return "video";
+  return "file";
+};
+
 const getSystemCallDescription = (msg: Message, status: string) => {
   if (status === "missed") return "Không được trả lời";
   if (status === "rejected") return "Cuộc gọi đã bị từ chối";
@@ -537,6 +847,64 @@ const getMessageSenderId = (message: Message): string | undefined => {
   }
 
   return message.senderId?._id || message.senderId?.id;
+};
+
+const getConversationMemberUserId = (
+  member: { userId?: string | { _id?: string; id?: string } },
+): string | undefined => {
+  if (!member?.userId) return undefined;
+  if (typeof member.userId === "string") return member.userId;
+  return member.userId._id || member.userId.id;
+};
+
+const buildReplyPreview = (message?: Message): string => {
+  if (!message) return "Tin nhắn gốc không còn khả dụng";
+  if (message.isUnsent || message.unsentAt) return "Tin nhắn đã được thu hồi";
+
+  const { isForwarded, displayContent } = parseForwardedMessageContent(
+    message.content,
+  );
+  const text = displayContent.trim();
+
+  const attachmentLabels = (message.attachments || [])
+    .slice(0, 2)
+    .map((attachment) => {
+      const normalized = String(attachment.fileType || "").toLowerCase();
+      if (normalized.startsWith("image")) return "[Hình ảnh]";
+      if (normalized.startsWith("video")) return "[Video]";
+      if (normalized.startsWith("audio")) return "[Ghi âm]";
+      return `[Tệp] ${attachment.fileName || "Đính kèm"}`;
+    })
+    .filter(Boolean);
+
+  if (text && attachmentLabels.length > 0) {
+    const extraCount = (message.attachments || []).length - attachmentLabels.length;
+    const extraSuffix = extraCount > 0 ? ` +${extraCount}` : "";
+    return `${text} • ${attachmentLabels.join(", ")}${extraSuffix}`;
+  }
+
+  if (text) return text;
+
+  if (attachmentLabels.length > 0) {
+    const extraCount = (message.attachments || []).length - attachmentLabels.length;
+    const extraSuffix = extraCount > 0 ? ` +${extraCount}` : "";
+    const attachmentText = `${attachmentLabels.join(", ")}${extraSuffix}`;
+
+    return isForwarded
+      ? `[Tin nhắn chuyển tiếp] • ${attachmentText}`
+      : attachmentText;
+  }
+
+  if (isForwarded) return "[Tin nhắn chuyển tiếp]";
+
+  const attachment = message.attachments?.[0];
+  if (!attachment) return "Tin nhắn";
+
+  const normalized = String(attachment.fileType || "").toLowerCase();
+  if (normalized.startsWith("image")) return "[Hình ảnh]";
+  if (normalized.startsWith("video")) return "[Video]";
+  if (normalized.startsWith("audio")) return "[Ghi âm]";
+  return `[Tệp] ${attachment.fileName || "Đính kèm"}`;
 };
 
 const isAiConversation = (conversation: any): boolean => {
@@ -597,6 +965,7 @@ function UnreadSummaryBanner({
 
 export default function ChatDetailClient() {
   const { id } = useParams();
+  const router = useRouter();
   const conversationId = id as string;
   const user = useAuthStore((state) => state.user);
 
@@ -606,6 +975,7 @@ export default function ChatDetailClient() {
   // Lấy conversation và messages riêng biệt
   const { data: conversationFromDetail } = useConversation(conversationId);
   const { data: aiConversationData } = useAiConversation();
+  const { data: conversationsData } = useConversations();
   const {
     data: messagesData,
     isLoading,
@@ -613,6 +983,7 @@ export default function ChatDetailClient() {
   } = useMessages(conversationId, {
     limit: 20,
   });
+  const { data: pinnedMessagesData } = usePinnedMessages(conversationId);
   const aiConversation =
     aiConversationData?.conversation?.id === conversationId
       ? aiConversationData.conversation
@@ -632,9 +1003,95 @@ export default function ChatDetailClient() {
       ? messagesData?.messages || []
       : aiConversationData?.messages || [];
   const shouldShowMessageError = Boolean(error) && messages.length === 0;
+  const errorStatusCode =
+    typeof (error as { response?: { status?: number } } | null)?.response
+      ?.status === "number"
+      ? ((error as { response?: { status?: number } }).response?.status as number)
+      : undefined;
+  const shouldShowJoinGroupPanel =
+    shouldShowMessageError && (errorStatusCode === 403 || errorStatusCode === 404);
+  const [joinGroupInfo, setJoinGroupInfo] = useState<{
+    conversationId: string;
+    name: string;
+    groupAvatar?: string;
+    memberCount: number;
+    isMember: boolean;
+    joinApprovalEnabled: boolean;
+  } | null>(null);
+  const [isLoadingJoinGroupInfo, setIsLoadingJoinGroupInfo] = useState(false);
+  const [isJoiningGroup, setIsJoiningGroup] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const { mutate: markConversationAsRead, isPending: isMarkingConversationAsRead } =
     useMarkConversationAsRead();
+
+  useEffect(() => {
+    if (!shouldShowJoinGroupPanel || !conversationId) return;
+
+    let active = true;
+
+    const run = async () => {
+      try {
+        setIsLoadingJoinGroupInfo(true);
+        const info = await chatService.getGroupJoinInfo(conversationId);
+        if (!active) return;
+
+        setJoinGroupInfo({
+          conversationId: info.conversationId,
+          name: info.name,
+          groupAvatar: info.groupAvatar,
+          memberCount: info.memberCount,
+          isMember: info.isMember,
+          joinApprovalEnabled: info.joinApprovalEnabled,
+        });
+      } catch {
+        if (!active) return;
+        setJoinGroupInfo(null);
+      } finally {
+        if (active) {
+          setIsLoadingJoinGroupInfo(false);
+        }
+      }
+    };
+
+    void run();
+
+    return () => {
+      active = false;
+    };
+  }, [conversationId, shouldShowJoinGroupPanel]);
+
+  const handleJoinGroupFromLink = useCallback(async () => {
+    if (!conversationId || isJoiningGroup) return;
+
+    try {
+      setIsJoiningGroup(true);
+      const result = await chatService.joinGroupByLink(conversationId);
+      if (result.pendingApproval) {
+        toast.success("Đã gửi yêu cầu tham gia. Chờ admin duyệt.");
+        return;
+      }
+
+      setJoinGroupInfo((current) =>
+        current ? { ...current, isMember: true } : current,
+      );
+      toast.success(
+        result.alreadyMember ? "Bạn đã ở trong nhóm này" : "Gia nhập nhóm thành công",
+      );
+      router.push(`/messages/${conversationId}`);
+    } catch (joinError: unknown) {
+      const message =
+        typeof joinError === "object" &&
+        joinError !== null &&
+        "response" in joinError &&
+        typeof (joinError as { response?: { data?: { message?: string } } }).response
+          ?.data?.message === "string"
+          ? (joinError as { response?: { data?: { message?: string } } }).response?.data?.message
+          : "Không thể gia nhập nhóm";
+      toast.error(message);
+    } finally {
+      setIsJoiningGroup(false);
+    }
+  }, [conversationId, isJoiningGroup, router]);
 
   // Hook tập trung logic phân biệt private/group - tự động fetch partner nếu cần
   const {
@@ -717,6 +1174,19 @@ export default function ChatDetailClient() {
   }, [currentLastReadAt, currentUserId, messages, unreadCount]);
 
   const isGroupConversation = conversation?.type === "group";
+  const isCurrentUserGroupAdmin = useMemo(() => {
+    if (!isGroupConversation || !currentUserId) return false;
+
+    const members = (conversation?.members || []) as Array<{
+      userId?: string | { _id?: string; id?: string };
+      role?: string;
+    }>;
+    const currentMember = members.find(
+      (member) => getConversationMemberUserId(member) === currentUserId,
+    );
+
+    return currentMember?.role === "admin";
+  }, [conversation?.members, currentUserId, isGroupConversation]);
 
   const { mutateAsync: sendMessage, isPending: isSendingMessage } =
     useSendMessage();
@@ -724,7 +1194,8 @@ export default function ChatDetailClient() {
     useSendAiMessage();
   const { mutate: unsendMessage, isPending: isUnsendPending } =
     useUnsendMessage();
-  const { mutate: editMessage, isPending: isEditPending } = useEditMessage();
+  const { mutate: pinMessage, isPending: isPinPending } = usePinMessage();
+  const { mutate: unpinMessage, isPending: isUnpinPending } = useUnpinMessage();
   const { mutate: deleteMessageForMe, isPending: isDeletePending } =
     useDeleteMessageForMe();
   const queryClient = useQueryClient();
@@ -757,11 +1228,29 @@ export default function ChatDetailClient() {
   const [pendingFocusMessageId, setPendingFocusMessageId] = useState<
     string | null
   >(null);
+  const [replyingToMessageId, setReplyingToMessageId] = useState<string | null>(
+    null,
+  );
+  const [forwardDialogOpen, setForwardDialogOpen] = useState(false);
+  const [forwardSearchQuery, setForwardSearchQuery] = useState("");
+  const [selectedForwardMessageId, setSelectedForwardMessageId] = useState<
+    string | null
+  >(null);
+  const [selectedForwardConversationId, setSelectedForwardConversationId] =
+    useState<string>("");
+  const [isForwarding, setIsForwarding] = useState(false);
   const [backgroundKey, setBackgroundKey] =
     useState<ChatBackgroundKey>("default");
 
+  const waitForNextFrame = useCallback(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    [],
+  );
+
   const getMessageId = useCallback((message: Message): string | undefined => {
-    return message.id || message._id;
+    const rawId = message.id || message._id;
+    if (!rawId) return undefined;
+    return String(rawId);
   }, []);
 
   useEffect(() => {
@@ -836,6 +1325,63 @@ export default function ChatDetailClient() {
       cancelAnimationFrame(frameId);
     };
   }, [focusMessageById, getMessageId, messages, pendingFocusMessageId]);
+
+  const messageMapById = useMemo(() => {
+    const map = new Map<string, Message>();
+    messages.forEach((message) => {
+      const id = getMessageId(message);
+      if (id) {
+        map.set(id, message);
+      }
+    });
+    return map;
+  }, [getMessageId, messages]);
+
+  const latestPinnedMessage = useMemo(() => {
+    return pinnedMessagesData?.latestPinnedMessage || null;
+  }, [pinnedMessagesData?.latestPinnedMessage]);
+
+  const pinnedMessageIdSet = useMemo(() => {
+    const set = new Set<string>();
+    (pinnedMessagesData?.pinnedMessages || []).forEach((item) => {
+      const id = String(item?.messageId || item?.message?.id || item?.message?._id || "");
+      if (id) {
+        set.add(id);
+      }
+    });
+    return set;
+  }, [pinnedMessagesData?.pinnedMessages]);
+
+  const replyPreviewText = useMemo(() => {
+    if (!replyingToMessageId) return "";
+    return buildReplyPreview(messageMapById.get(replyingToMessageId));
+  }, [messageMapById, replyingToMessageId]);
+
+  const selectedForwardMessage = useMemo(() => {
+    if (!selectedForwardMessageId) return undefined;
+    return messageMapById.get(selectedForwardMessageId);
+  }, [messageMapById, selectedForwardMessageId]);
+
+  const forwardTargetConversations = useMemo(() => {
+    const list = (conversationsData?.conversations || []).filter(
+      (item: any) => {
+        const id = String(item?.id || item?._id || "");
+        if (!id || id === conversationId) return false;
+        if (isAiConversation(item)) return false;
+        if (item?.isBlocked) return false;
+        return true;
+      },
+    );
+
+    const normalizedQuery = forwardSearchQuery.trim().toLowerCase();
+    if (!normalizedQuery) return list;
+
+    return list.filter((item: any) =>
+      getConversationForwardLabel(item, currentUserId)
+        .toLowerCase()
+        .includes(normalizedQuery),
+    );
+  }, [conversationId, conversationsData?.conversations, currentUserId, forwardSearchQuery]);
 
   useEffect(() => {
     const oldestMessage = messages[0];
@@ -1032,6 +1578,31 @@ export default function ChatDetailClient() {
     }
   }, [conversationId, queryClient, getMessageId]);
 
+  const focusReplyTargetMessage = useCallback(
+    async (targetMessageId: string) => {
+      if (!targetMessageId) return;
+
+      if (focusMessageById(targetMessageId)) return;
+
+      let attempt = 0;
+      const maxAttempts = 8;
+
+      while (attempt < maxAttempts && hasMoreRef.current) {
+        await loadOlderMessages();
+        await waitForNextFrame();
+
+        if (focusMessageById(targetMessageId)) {
+          return;
+        }
+
+        attempt += 1;
+      }
+
+      setPendingFocusMessageId(targetMessageId);
+    },
+    [focusMessageById, loadOlderMessages, waitForNextFrame],
+  );
+
   useEffect(() => {
     let frameId: number | null = null;
     let cleanupScroll: (() => void) | null = null;
@@ -1140,6 +1711,26 @@ export default function ChatDetailClient() {
   }, [isConnected, conversationId, user, aiMode]);
 
   useEffect(() => {
+    if (!socket.current || !conversationId) return;
+
+    const handlePinnedUpdated = (payload: { conversationId?: string }) => {
+      if (!payload?.conversationId || payload.conversationId !== conversationId) {
+        return;
+      }
+
+      queryClient.invalidateQueries({
+        queryKey: ["pinned-messages", conversationId],
+      });
+    };
+
+    socket.current.on("conversation:pinned-updated", handlePinnedUpdated);
+
+    return () => {
+      socket.current?.off("conversation:pinned-updated", handlePinnedUpdated);
+    };
+  }, [conversationId, queryClient, socket]);
+
+  useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.closest("[data-message-action-scope='true']")) {
@@ -1157,7 +1748,16 @@ export default function ChatDetailClient() {
 
   useEffect(() => {
     setActiveMessageActionsId(null);
+    setReplyingToMessageId(null);
   }, [conversationId]);
+
+  useEffect(() => {
+    if (forwardDialogOpen) return;
+    setForwardSearchQuery("");
+    setSelectedForwardConversationId("");
+    setSelectedForwardMessageId(null);
+    setIsForwarding(false);
+  }, [forwardDialogOpen]);
 
   const clearLongPressTimer = useCallback(() => {
     if (longPressTimeoutRef.current) {
@@ -1197,6 +1797,7 @@ export default function ChatDetailClient() {
         conversationId,
         content: text,
       });
+      setReplyingToMessageId(null);
       return;
     }
 
@@ -1204,8 +1805,70 @@ export default function ChatDetailClient() {
       conversationId,
       content: text,
       type: "text",
+      replyToMessageId: replyingToMessageId || undefined,
     });
+    setReplyingToMessageId(null);
   };
+
+  const openForwardDialog = useCallback((messageId?: string) => {
+    if (!messageId) return;
+    setSelectedForwardMessageId(messageId);
+    setSelectedForwardConversationId("");
+    setForwardSearchQuery("");
+    setForwardDialogOpen(true);
+    setActiveMessageActionsId(null);
+  }, []);
+
+  const handleForwardMessage = useCallback(async () => {
+    if (!selectedForwardMessage || !selectedForwardConversationId) return;
+
+    if (!isMessageForwardable(selectedForwardMessage)) {
+      toast.error("Chỉ hỗ trợ chuyển tiếp link, tệp hoặc hình ảnh");
+      return;
+    }
+
+    const attachments = getForwardableAttachments(selectedForwardMessage.attachments);
+    const { displayContent } = parseForwardedMessageContent(
+      selectedForwardMessage.content,
+    );
+    const content = String(displayContent || "").trim();
+    const canForwardLinkOnly = hasUrlInContent(content);
+
+    if (attachments.length === 0 && !canForwardLinkOnly) {
+      toast.error("Chỉ hỗ trợ chuyển tiếp link, tệp hoặc hình ảnh");
+      return;
+    }
+
+    const inferredType =
+      selectedForwardMessage.type && selectedForwardMessage.type !== "text"
+        ? selectedForwardMessage.type
+        : attachments.length > 0
+          ? resolveMessageTypeFromAttachment(attachments[0])
+          : "text";
+
+    setIsForwarding(true);
+    try {
+      const forwardedContent = content
+        ? `${FORWARDED_MESSAGE_MARKER}\n${content}`
+        : FORWARDED_MESSAGE_MARKER;
+
+      await sendMessage({
+        conversationId: selectedForwardConversationId,
+        content: forwardedContent,
+        type: inferredType,
+        attachments,
+      });
+
+      setForwardDialogOpen(false);
+      toast.success("Đã chuyển tiếp tin nhắn");
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.message || "Không thể chuyển tiếp tin nhắn",
+      );
+    } finally {
+      setIsForwarding(false);
+    }
+  }, [selectedForwardConversationId, selectedForwardMessage, sendMessage]);
 
   const handleSendAttachments = useCallback(
     async (files: File[]) => {
@@ -1255,6 +1918,7 @@ export default function ChatDetailClient() {
             conversationId,
             content: "",
             type: messageType,
+            replyToMessageId: replyingToMessageId || undefined,
             attachments: [
               {
                 key: presign.key,
@@ -1265,6 +1929,7 @@ export default function ChatDetailClient() {
             ],
           });
         }
+        setReplyingToMessageId(null);
       } catch (error: unknown) {
         toast.error(
           (error as { response?: { data?: { message?: string } } })?.response
@@ -1314,12 +1979,74 @@ export default function ChatDetailClient() {
       >
         <div className="w-full max-w-[1240px] px-3 py-4 md:px-6 md:py-6 xl:px-10 mx-auto">
           <div className="flex flex-col w-full gap-3.5 pb-4">
+            {latestPinnedMessage && (
+              <button
+                type="button"
+                onClick={() => {
+                  const pinnedId = String(
+                    latestPinnedMessage.id || latestPinnedMessage._id || "",
+                  );
+                  if (!pinnedId) return;
+                  focusMessageById(pinnedId);
+                }}
+                className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-left shadow-sm transition hover:bg-amber-100/80"
+              >
+                <Pin className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                <div className="min-w-0">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                    Tin ghim mới nhất
+                  </div>
+                  <div className="truncate text-sm text-slate-700">
+                    {buildReplyPreview(latestPinnedMessage)}
+                  </div>
+                </div>
+              </button>
+            )}
             {isLoading ? (
               <MessageSkeleton />
             ) : shouldShowMessageError ? (
-              <div className="py-8 text-center text-slate-500">
-                Không thể tải tin nhắn
-              </div>
+              shouldShowJoinGroupPanel ? (
+                <div className="mx-auto w-full max-w-md rounded-3xl border border-slate-200 bg-white px-5 py-5 text-center shadow-sm">
+                  <div className="text-sm font-semibold text-slate-900">
+                    {joinGroupInfo?.name || "Nhóm chat"}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    {isLoadingJoinGroupInfo
+                      ? "Đang kiểm tra trạng thái thành viên..."
+                      : joinGroupInfo
+                        ? `${joinGroupInfo.memberCount} thành viên`
+                        : "Bạn chưa thể xem nội dung nhóm này"}
+                  </div>
+
+                  <div className="mt-4 flex justify-center">
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        if (joinGroupInfo?.isMember) {
+                          router.push(`/messages/${conversationId}`);
+                          return;
+                        }
+                        void handleJoinGroupFromLink();
+                      }}
+                      disabled={isLoadingJoinGroupInfo || isJoiningGroup}
+                    >
+                      {isLoadingJoinGroupInfo
+                        ? "Đang kiểm tra..."
+                        : isJoiningGroup
+                          ? "Đang gia nhập..."
+                          : joinGroupInfo?.isMember
+                            ? "Vào nhóm"
+                            : joinGroupInfo?.joinApprovalEnabled
+                              ? "Gửi yêu cầu tham gia"
+                              : "Gia nhập nhóm"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-8 text-center text-slate-500">
+                  Không thể tải tin nhắn
+                </div>
+              )
             ) : messages && messages.length > 0 ? (
               <>
                 {isLoadingOlder && hasMoreRef.current && (
@@ -1330,6 +2057,7 @@ export default function ChatDetailClient() {
                 {messages.map((msg: Message, index: number) => {
                   const shouldRenderUnreadBanner =
                     index === firstUnreadIndex && unreadCount > 0;
+                  const stableMessageId = getMessageId(msg);
 
                   if (msg.type === "system") {
                     const normalizedSystemContent = String(msg.content || "")
@@ -1341,7 +2069,7 @@ export default function ChatDetailClient() {
 
                     if (isLeaveNotice) {
                       return (
-                        <Fragment key={msg.id || msg._id}>
+                        <Fragment key={stableMessageId || `leave-${index}`}>
                           {shouldRenderUnreadBanner && (
                             <UnreadSummaryBanner
                               unreadCount={unreadCount}
@@ -1375,7 +2103,7 @@ export default function ChatDetailClient() {
                       !!systemSenderId && systemSenderId === currentUserId;
 
                     return (
-                      <Fragment key={msg.id || msg._id}>
+                      <Fragment key={stableMessageId || `system-${index}`}>
                         {shouldRenderUnreadBanner && (
                           <UnreadSummaryBanner
                             unreadCount={unreadCount}
@@ -1491,25 +2219,67 @@ export default function ChatDetailClient() {
                           ? conversationAvatar
                           : undefined);
                   const messageTime = formatMessageClock(msg.createdAt);
-                  const messageId = msg.id || msg._id;
+                  const messageId = stableMessageId;
                   const isTextMessage = msg.type === "text";
+                  const isUnsent = Boolean(msg.isUnsent || msg.unsentAt);
+                  const {
+                    isForwarded,
+                    displayContent: parsedContent,
+                  } = parseForwardedMessageContent(msg.content);
                   const attachments = msg.attachments || [];
+                  const visibleAttachments = isUnsent ? [] : attachments;
                   const isAttachmentOnlyMessage =
-                    attachments.length > 0 &&
-                    !msg.content &&
+                    visibleAttachments.length > 0 &&
+                    !parsedContent &&
                     msg.type !== "audio";
                   const isPlainAttachmentBubble =
                     isMe && isAttachmentOnlyMessage;
-                  const isUnsent = Boolean(msg.isUnsent || msg.unsentAt);
-                  const canEdit =
-                    isMe && isTextMessage && !isUnsent && !isAiMessage;
+                  const canReply = !isUnsent;
+                  const isPinned = Boolean(messageId && pinnedMessageIdSet.has(messageId));
+                  const canPin =
+                    !isUnsent &&
+                    !isAiMessage &&
+                    (!isGroupConversation ||
+                      !conversation?.pinManagementEnabled ||
+                      isCurrentUserGroupAdmin);
+                  const canUnpin = canPin && isPinned;
                   const canUnsend = isMe && !isUnsent && !isAiMessage;
                   const canDeleteForMe = isMe;
+                  const canForward = isMessageForwardable(msg);
                   const canShowActions =
                     Boolean(messageId) &&
-                    (canEdit || canUnsend || canDeleteForMe);
+                    (canPin ||
+                      canUnpin ||
+                      canUnsend ||
+                      canDeleteForMe ||
+                      canReply ||
+                      canForward);
                   const isActionsVisible =
                     canShowActions && activeMessageActionsId === messageId;
+                  const replyTargetMessageId = getReplyToMessageId(msg.replyToMessageId);
+                  const repliedMessageFromPayload = getReplyMessageFromPayload(
+                    msg.replyToMessageId,
+                  );
+                  const repliedMessageFromSnapshot = getReplyMessageFromSnapshot(
+                    (msg as any).replyPreview,
+                  );
+                  const repliedMessageFromMap = replyTargetMessageId
+                    ? messageMapById.get(replyTargetMessageId)
+                    : undefined;
+                  const repliedMessage =
+                    repliedMessageFromPayload ||
+                    repliedMessageFromMap ||
+                    repliedMessageFromSnapshot;
+                  const hasReplyReference = Boolean(
+                    msg.replyToMessageId || (msg as any).replyPreview,
+                  );
+                  const repliedPreview = buildReplyPreview(repliedMessage);
+                  const unsentBubbleClass =
+                    backgroundKey === "default"
+                      ? "px-4 py-2.5 border border-slate-200/80 bg-white text-slate-600 shadow-none"
+                      : backgroundKey === "night"
+                        ? "px-4 py-2.5 border border-slate-600/70 bg-slate-900/65 text-slate-200 shadow-none"
+                        : "px-4 py-2.5 border border-slate-200/80 bg-white/75 text-slate-700 shadow-none";
                   const outgoingMetaClass = isPlainAttachmentBubble
                     ? "text-slate-400"
                     : "text-blue-100";
@@ -1528,31 +2298,14 @@ export default function ChatDetailClient() {
                       ? "Đã chỉnh sửa"
                       : "";
 
-                  const handleEditMessage = () => {
-                    if (!messageId || !canEdit) return;
-
-                    const currentContent = msg.content || "";
-                    const nextContent = window.prompt(
-                      "Sửa tin nhắn",
-                      currentContent,
-                    );
-                    if (nextContent === null) return;
-
-                    const trimmed = nextContent.trim();
-                    if (!trimmed || trimmed === currentContent.trim()) return;
-
-                    editMessage({
-                      conversationId,
-                      messageId,
-                      content: trimmed,
-                    });
+                  const handleReplyMessage = () => {
+                    if (!messageId || !canReply) return;
+                    setReplyingToMessageId(messageId);
+                    setActiveMessageActionsId(null);
                   };
 
                   const handleUnsendMessage = () => {
                     if (!messageId || !canUnsend) return;
-                    const confirmed = window.confirm("Thu hồi tin nhắn này?");
-                    if (!confirmed) return;
-
                     unsendMessage({
                       conversationId,
                       messageId,
@@ -1566,6 +2319,16 @@ export default function ChatDetailClient() {
                       conversationId,
                       messageId,
                     });
+                  };
+
+                  const handlePinMessage = () => {
+                    if (!messageId || !canPin || isPinned) return;
+                    pinMessage({ conversationId, messageId });
+                  };
+
+                  const handleUnpinMessage = () => {
+                    if (!messageId || !canUnpin) return;
+                    unpinMessage({ conversationId, messageId });
                   };
 
                   return (
@@ -1611,6 +2374,8 @@ export default function ChatDetailClient() {
                           className={`group rounded-2xl text-[14px] md:text-[15px] max-w-[84%] md:max-w-[70%] xl:max-w-[64%] ${
                             isPlainAttachmentBubble
                               ? "w-fit p-0 bg-transparent text-slate-800 shadow-none"
+                              : isUnsent
+                                ? unsentBubbleClass
                               : `px-4 py-2.5 shadow-sm ${
                                   isMe
                                     ? "bg-blue-600 text-white rounded-br-none"
@@ -1622,10 +2387,43 @@ export default function ChatDetailClient() {
                               : ""
                           }`}
                         >
-                          {attachments.length > 0 && (
+                          {hasReplyReference && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (replyTargetMessageId) {
+                                  void focusReplyTargetMessage(replyTargetMessageId);
+                                }
+                              }}
+                              className={`mb-2 w-full rounded-xl border-l-2 px-2.5 py-1.5 text-left text-xs transition ${
+                                isMe
+                                  ? "border-blue-200 bg-blue-500/35 text-blue-50 hover:bg-blue-500/45"
+                                  : "border-blue-300 bg-slate-100 text-slate-600 hover:bg-slate-200"
+                              }`}
+                            >
+                              <span className="font-semibold uppercase tracking-wide">Trả lời</span>
+                              <span className="mt-1 block whitespace-pre-wrap break-words leading-relaxed opacity-90">
+                                {repliedPreview}
+                              </span>
+                            </button>
+                          )}
+
+                          {!isUnsent && isForwarded && (
+                            <div
+                              className={`mb-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                                isMe
+                                  ? "bg-blue-500/45 text-blue-50"
+                                  : "bg-slate-200 text-slate-600"
+                              }`}
+                            >
+                              Chuyển tiếp
+                            </div>
+                          )}
+
+                          {visibleAttachments.length > 0 && (
                             <div className={msg.content ? "mb-2" : ""}>
                               <div className="flex flex-col gap-2">
-                                {attachments.map((attachment, index) => (
+                                {visibleAttachments.map((attachment, index) => (
                                   <MessageAttachmentItem
                                     key={`${attachment.key || attachment.url || attachment.fileName}-${index}`}
                                     attachment={attachment}
@@ -1635,8 +2433,14 @@ export default function ChatDetailClient() {
                               </div>
                             </div>
                           )}
-                          {msg.content ? renderMessageContent(msg.content) : null}
-                          {msg.type === "audio" && attachments.length === 0 && (
+                          {isUnsent ? (
+                            <p className={isMe ? "italic text-blue-100" : "italic text-slate-500"}>
+                              Tin nhắn đã được thu hồi
+                            </p>
+                          ) : parsedContent ? (
+                            renderMessageContent(parsedContent)
+                          ) : null}
+                          {msg.type === "audio" && visibleAttachments.length === 0 && (
                             <div
                               className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm ${
                                 isMe
@@ -1655,14 +2459,59 @@ export default function ChatDetailClient() {
                               </span>
                             </div>
                           )}
-                          {!isMe && statusText && (
+                          {isPinned && (
                             <div
-                              className={`text-[10px] mt-1 text-right ${
-                                isMe ? "text-blue-100" : "text-slate-400"
+                              className={`mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                isMe
+                                  ? "bg-blue-500/40 text-blue-50"
+                                  : "bg-amber-100 text-amber-700"
                               }`}
-                              suppressHydrationWarning
                             >
-                              {statusText}
+                              <Pin className="h-3 w-3" />
+                              Đã ghim
+                            </div>
+                          )}
+                          {!isMe && (
+                            <div className="mt-1 flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1">
+                                {canReply && (
+                                  <button
+                                    type="button"
+                                    onClick={handleReplyMessage}
+                                    className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] text-slate-500 transition hover:bg-slate-200 hover:text-slate-700"
+                                  >
+                                    <Reply className="h-3 w-3" />
+                                    Trả lời
+                                  </button>
+                                )}
+                                {canForward && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openForwardDialog(messageId)}
+                                    className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] text-slate-500 transition hover:bg-slate-200 hover:text-slate-700"
+                                  >
+                                    Chuyển tiếp
+                                  </button>
+                                )}
+                                {canPin && (
+                                  <button
+                                    type="button"
+                                    onClick={isPinned ? handleUnpinMessage : handlePinMessage}
+                                    className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] text-slate-500 transition hover:bg-slate-200 hover:text-slate-700"
+                                    disabled={isPinPending || isUnpinPending}
+                                  >
+                                    {isPinned ? "Bỏ ghim" : "Ghim"}
+                                  </button>
+                                )}
+                              </div>
+                              {statusText && (
+                                <div
+                                  className="text-[10px] text-slate-400"
+                                  suppressHydrationWarning
+                                >
+                                  {statusText}
+                                </div>
+                              )}
                             </div>
                           )}
 
@@ -1712,9 +2561,10 @@ export default function ChatDetailClient() {
                                           : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
                                       }`}
                                       disabled={
-                                        isEditPending ||
                                         isUnsendPending ||
-                                        isDeletePending
+                                        isDeletePending ||
+                                        isPinPending ||
+                                        isUnpinPending
                                       }
                                     >
                                       <MoreVertical className="h-4 w-4" />
@@ -1724,11 +2574,30 @@ export default function ChatDetailClient() {
                                     align="end"
                                     className="w-40"
                                   >
-                                    {canEdit && (
+                                    {canReply && (
                                       <DropdownMenuItem
-                                        onClick={handleEditMessage}
+                                        onClick={handleReplyMessage}
                                       >
-                                        Sửa tin nhắn
+                                        Trả lời tin nhắn
+                                      </DropdownMenuItem>
+                                    )}
+                                    {canPin && (
+                                      <DropdownMenuItem
+                                        onClick={
+                                          isPinned
+                                            ? handleUnpinMessage
+                                            : handlePinMessage
+                                        }
+                                        disabled={isPinPending || isUnpinPending}
+                                      >
+                                        {isPinned ? "Bỏ ghim tin nhắn" : "Ghim tin nhắn"}
+                                      </DropdownMenuItem>
+                                    )}
+                                    {canForward && (
+                                      <DropdownMenuItem
+                                        onClick={() => openForwardDialog(messageId)}
+                                      >
+                                        Chuyển tiếp
                                       </DropdownMenuItem>
                                     )}
                                     {canUnsend && (
@@ -1779,12 +2648,83 @@ export default function ChatDetailClient() {
         </div>
       )}
 
+      <Dialog open={forwardDialogOpen} onOpenChange={setForwardDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Chuyển tiếp tin nhắn</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <Input
+              value={forwardSearchQuery}
+              onChange={(event) => setForwardSearchQuery(event.target.value)}
+              placeholder="Tìm cuộc trò chuyện"
+            />
+
+            <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200">
+              {forwardTargetConversations.length > 0 ? (
+                forwardTargetConversations.map((item: any) => {
+                  const id = String(item?.id || item?._id || "");
+                  if (!id) return null;
+
+                  const isSelected = selectedForwardConversationId === id;
+
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setSelectedForwardConversationId(id)}
+                      className={`flex w-full items-center justify-between px-3 py-2.5 text-left text-sm transition ${
+                        isSelected
+                          ? "bg-blue-50 text-blue-700"
+                          : "hover:bg-slate-50"
+                      }`}
+                    >
+                      <span className="truncate">{getConversationForwardLabel(item, currentUserId)}</span>
+                      {isSelected && (
+                        <span className="text-xs font-medium">Đã chọn</span>
+                      )}
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="px-3 py-5 text-center text-xs text-slate-500">
+                  Không có cuộc trò chuyện phù hợp
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              Chỉ hỗ trợ chuyển tiếp link, tệp, hình ảnh hoặc ghi âm.
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setForwardDialogOpen(false)}
+              disabled={isForwarding}
+            >
+              Hủy
+            </Button>
+            <Button
+              onClick={() => void handleForwardMessage()}
+              disabled={!selectedForwardConversationId || isForwarding}
+            >
+              {isForwarding ? "Đang chuyển tiếp..." : "Chuyển tiếp"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <ChatInput
         onSend={handleSendMessage}
         onSendAttachments={handleSendAttachments}
         isUploadingAttachments={isSendingAttachment}
         uploadProgressPercent={uploadProgressPercent}
         uploadProgressLabel={uploadProgressLabel}
+        replyPreview={replyPreviewText}
+        onCancelReply={() => setReplyingToMessageId(null)}
         disabled={
           !conversationId ||
           isSendingMessage ||
