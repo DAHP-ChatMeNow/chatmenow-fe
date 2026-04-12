@@ -527,11 +527,10 @@ export default function AdminUsersPage() {
                       </td>
                       <td className="px-4 py-3">
                         <Badge
-                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium border ${
-                            user.role === "admin"
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium border ${user.role === "admin"
                               ? "bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900/40"
                               : "bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600"
-                          }`}
+                            }`}
                         >
                           {user.role === "admin" ? (
                             <ShieldCheck className="w-3.5 h-3.5" />
@@ -935,11 +934,10 @@ export default function AdminUsersPage() {
               type="button"
               onClick={handleSubmitAccountStatus}
               disabled={isUpdatingAccountStatus}
-              className={`${
-                nextAccountStatus === "active"
+              className={`${nextAccountStatus === "active"
                   ? "bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600"
                   : "bg-rose-600 hover:bg-rose-700 dark:bg-rose-700 dark:hover:bg-rose-600"
-              }`}
+                }`}
             >
               {isUpdatingAccountStatus ? "Đang cập nhật..." : "Xác nhận cập nhật"}
             </Button>

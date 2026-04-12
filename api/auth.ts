@@ -22,6 +22,22 @@ export type RegisterPayload = {
   password: string;
 };
 
+export type SendOtpPayload = {
+  email: string;
+};
+
+export type VerifyOtpPayload = {
+  email: string;
+  otp: string;
+};
+
+export type OtpResponse = {
+  success: boolean;
+  message: string;
+  expiresIn?: number;
+  verified?: boolean;
+};
+
 export type AuthResponse = {
   user: User;
   token: string;
@@ -75,6 +91,16 @@ const revokeRememberedAccount = async (
   return data;
 };
 
+const sendOtp = async (payload: SendOtpPayload) => {
+  const { data } = await api.post<OtpResponse>("/auth/send-otp", payload);
+  return data;
+};
+
+const verifyOtp = async (payload: VerifyOtpPayload) => {
+  const { data } = await api.post<OtpResponse>("/auth/verify-otp", payload);
+  return data;
+};
+
 const register = async (payload: RegisterPayload) => {
   const { data } = await api.post<AuthResponse>("/auth/register", payload);
   return data;
@@ -87,6 +113,8 @@ const getMe = async () => {
 
 export const authService = {
   login,
+  sendOtp,
+  verifyOtp,
   register,
   getMe,
   rememberedLogin,

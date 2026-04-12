@@ -382,10 +382,10 @@ const getPostStats = async (days: number = 30) => {
       Number(stats.avgCommentsPerPost ?? data?.avgCommentsPerPost ?? 0) || 0,
     privacyStats: stats.privacyStats ??
       data?.privacyStats ?? {
-        public: 0,
-        friends: 0,
-        private: 0,
-      },
+      public: 0,
+      friends: 0,
+      private: 0,
+    },
     postsPerDay: stats.postsPerDay ?? data?.postsPerDay ?? [],
     topPosts: stats.topPosts ?? data?.topPosts ?? [],
   } satisfies AdminPostsStatsResponse;
