@@ -74,6 +74,11 @@ export interface AiConversationResponse {
   messages?: Message[];
 }
 
+export interface UpdateGroupConversationPayload {
+  name?: string;
+  groupAvatar?: string;
+}
+
 export interface SendAiMessagePayload {
   conversationId?: string;
   content: string;
@@ -716,6 +721,14 @@ export const chatService = {
       `/chat/conversations/${conversationId}/partner`,
     );
     return mapMongoId(res.data.partner);
+  },
+
+  updateGroupConversation: async (
+    conversationId: string,
+    payload: UpdateGroupConversationPayload,
+  ) => {
+    const res = await api.patch(`/chat/conversations/${conversationId}`, payload);
+    return mapMongoId((res.data as any).conversation || res.data);
   },
 
   // Thêm thành viên vào nhóm

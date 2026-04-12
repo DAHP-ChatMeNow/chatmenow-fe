@@ -7,16 +7,25 @@ import {
   ChevronLeft,
   MessageCircle,
   MoreHorizontal,
+  Share2,
+  UserPlus,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
 import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 import {
+  useContacts,
   useGetFriendProfile,
+  useGetUserEmailById,
+  useSendFriendRequest,
   useRemoveFriend,
 } from "@/hooks/use-contact";
-import { useGetPrivateConversation } from "@/hooks/use-chat";
+import {
+  useGetPrivateConversation,
+  useSendMessage,
+} from "@/hooks/use-chat";
 import { formatPresenceStatus } from "@/lib/utils";
 import {
   Dialog,
@@ -31,18 +40,57 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useAuthStore } from "@/store/use-auth-store";
+import {
+  createFriendCardAttachment,
+  FriendCardPayload,
+} from "@/lib/friend-card";
 
 export default function FriendProfilePage() {
   const params = useParams();
   const router = useRouter();
   const userId = params?.userId as string;
+  const user = useAuthStore((state) => state.user);
+  const currentUserId = user?.id || user?._id;
 
   const { data: friend, isLoading, error } = useGetFriendProfile(userId);
-  const { mutate: getPrivateConversation, isPending: isOpeningChat } =
-    useGetPrivateConversation();
+  const { data: friendEmail } = useGetUserEmailById(userId);
+  const { data: contactsData, isLoading: isLoadingContacts } = useContacts();
+  const {
+    mutate: getPrivateConversation,
+    mutateAsync: getPrivateConversationAsync,
+    isPending: isOpeningChat,
+  } = useGetPrivateConversation();
+  const { mutateAsync: sendMessage, isPending: isSendingShareCard } =
+    useSendMessage();
+  const { mutate: sendFriendRequest, isPending: isSendingFriendRequest } =
+    useSendFriendRequest();
   const { mutate: removeFriend, isPending: isRemovingFriend } =
     useRemoveFriend();
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [recipientQuery, setRecipientQuery] = useState("");
+
+  const contacts = contactsData?.contacts || [];
+
+  const shareTargets = useMemo(() => {
+    const query = recipientQuery.trim().toLowerCase();
+
+    return contacts.filter((contact) => {
+      if (!contact?.id || contact.id === currentUserId || contact.id === friend?.id) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      return (
+        contact.displayName.toLowerCase().includes(query) ||
+        (contact.email || "").toLowerCase().includes(query)
+      );
+    });
+  }, [contacts, currentUserId, friend?.id, recipientQuery]);
 
   const statusText = useMemo(
     () =>
@@ -55,13 +103,46 @@ export default function FriendProfilePage() {
   );
 
   const handleOpenChat = () => {
-    if (!friend?.id) return;
+    if (!friend?.id || !friend.isFriend) return;
 
     getPrivateConversation(friend.id, {
       onSuccess: (conversation) => {
         router.push(`/messages/${conversation.id}`);
       },
     });
+  };
+
+  const handleSendFriendRequest = () => {
+    if (!friend?.id || friend.isFriend) return;
+
+    sendFriendRequest(friend.id);
+  };
+
+  const handleShareCard = async (recipientId: string) => {
+    if (!friend?.id || !friendEmail?.email) return;
+
+    const conversation = await getPrivateConversationAsync(recipientId);
+
+    if (!conversation?.id) return;
+
+    const payload: FriendCardPayload = {
+      userId: friend.id,
+      displayName: friend.displayName,
+      avatar: friend.avatar,
+      email: friendEmail.email,
+      profileUrl: `/profile/${friend.id}`,
+    };
+
+    await sendMessage({
+      conversationId: conversation.id,
+      content: `Đã chia sẻ danh thiếp của ${friend.displayName}`,
+      type: "file",
+      attachments: [createFriendCardAttachment(payload)],
+    });
+
+    setShowShareDialog(false);
+    setRecipientQuery("");
+    router.push(`/messages/${conversation.id}`);
   };
 
   const handleRemoveFriend = () => {
@@ -116,40 +197,65 @@ export default function FriendProfilePage() {
                     />
 
                     <div className="flex items-center gap-2">
-                      <Button
-                        onClick={handleOpenChat}
-                        disabled={isOpeningChat}
-                        className="rounded-xl"
-                      >
-                        {isOpeningChat ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        ) : (
-                          <MessageCircle className="w-4 h-4 mr-2" />
-                        )}
-                        Nhắn tin
-                      </Button>
-
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
+                      {friend.isFriend ? (
+                        <>
                           <Button
-                            variant="outline"
-                            size="icon"
+                            onClick={handleOpenChat}
+                            disabled={isOpeningChat}
                             className="rounded-xl"
-                            aria-label="Tuỳ chọn bạn bè"
                           >
-                            <MoreHorizontal className="w-4 h-4" />
+                            {isOpeningChat ? (
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                              <MessageCircle className="w-4 h-4 mr-2" />
+                            )}
+                            Nhắn tin
                           </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-48">
-                          <DropdownMenuItem
-                            className="gap-2 text-red-600 cursor-pointer focus:text-red-600 focus:bg-red-50"
-                            onClick={() => setShowRemoveConfirm(true)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                            Xóa bạn
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="rounded-xl"
+                                aria-label="Tuỳ chọn bạn bè"
+                              >
+                                <MoreHorizontal className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56">
+                              <DropdownMenuItem
+                                className="gap-2 cursor-pointer"
+                                onClick={() => setShowShareDialog(true)}
+                              >
+                                <Share2 className="w-4 h-4" />
+                                Chia sẻ danh thiếp
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="gap-2 text-red-600 cursor-pointer focus:text-red-600 focus:bg-red-50"
+                                onClick={() => setShowRemoveConfirm(true)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                                Xóa bạn
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </>
+                      ) : (
+                        <Button
+                          onClick={handleSendFriendRequest}
+                          disabled={isSendingFriendRequest}
+                          className="rounded-xl"
+                        >
+                          {isSendingFriendRequest ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <UserPlus className="w-4 h-4 mr-2" />
+                          )}
+                          Kết bạn
+                        </Button>
+                      )}
                     </div>
                   </div>
 
@@ -191,6 +297,86 @@ export default function FriendProfilePage() {
           )}
         </div>
       </ScrollArea>
+
+      <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
+        <DialogContent className="max-w-2xl gap-0 p-0 bg-white border-0 shadow-2xl dark:bg-slate-800 rounded-2xl">
+          <div className="px-6 pt-6 pb-4 space-y-4">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-slate-900 dark:text-white">
+                Chia sẻ danh thiếp
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
+              <div className="flex items-center gap-3">
+                <PresignedAvatar
+                  avatarKey={friend?.avatar}
+                  displayName={friend?.displayName || ""}
+                  className="h-14 w-14 shrink-0"
+                  fallbackClassName="text-lg font-bold"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-base font-semibold text-slate-900 dark:text-white">
+                    {friend?.displayName}
+                  </div>
+                  <div className="truncate text-sm text-slate-500 dark:text-slate-400">
+                    {friendEmail?.email || "Đang tải email..."}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <Input
+              placeholder="Tìm người nhận..."
+              value={recipientQuery}
+              onChange={(e) => setRecipientQuery(e.target.value)}
+            />
+
+            <ScrollArea className="h-72 rounded-2xl border border-slate-200 dark:border-slate-700">
+              <div className="p-2">
+                {isLoadingContacts ? (
+                  <div className="flex items-center justify-center py-10 text-sm text-slate-500">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Đang tải danh sách bạn bè...
+                  </div>
+                ) : shareTargets.length > 0 ? (
+                  shareTargets.map((contact) => (
+                    <button
+                      key={contact.id}
+                      type="button"
+                      onClick={() => void handleShareCard(contact.id)}
+                      disabled={isSendingShareCard}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-slate-800"
+                    >
+                      <PresignedAvatar
+                        avatarKey={contact.avatar}
+                        displayName={contact.displayName}
+                        className="h-11 w-11 shrink-0"
+                        fallbackClassName="text-sm font-semibold"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium text-slate-900 dark:text-white">
+                          {contact.displayName}
+                        </div>
+                        <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+                          {contact.email || "Không có email"}
+                        </div>
+                      </div>
+                      <div className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+                        Gửi
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-4 py-10 text-center text-sm text-slate-500">
+                    Không tìm thấy người nhận phù hợp.
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showRemoveConfirm} onOpenChange={setShowRemoveConfirm}>
         <DialogContent className="max-w-md gap-0 p-0 bg-white border-0 shadow-2xl dark:bg-slate-800 rounded-2xl">

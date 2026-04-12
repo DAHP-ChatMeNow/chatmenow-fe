@@ -1,13 +1,19 @@
 "use client";
 
-import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ChevronLeft,
   Phone,
   Video,
   MoreVertical,
-  Image as ImageIcon,
-  Link2,
   Search as SearchIcon,
   Palette,
   Check,
@@ -17,6 +23,10 @@ import {
   Trash2,
   LogOut,
   Sparkles,
+  FileText,
+  Save,
+  Loader2,
+  Upload,
 } from "lucide-react";
 import { useRouter, useParams } from "next/navigation";
 import { PresignedAvatar } from "@/components/ui/presigned-avatar";
@@ -33,6 +43,7 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
+  SheetDescription,
 } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
@@ -52,6 +63,7 @@ import {
   useRemoveMemberFromGroup,
   useTransferGroupAdmin,
   useDissolveGroup,
+  useUpdateGroupConversation,
 } from "@/hooks/use-chat";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useBlockUser, useContacts } from "@/hooks/use-contact";
@@ -59,9 +71,12 @@ import { useCreateConversation } from "@/hooks/use-chat";
 import { useVideoCall } from "@/components/providers/video-call-provider";
 import { Conversation, ConversationMember } from "@/types/conversation";
 import { Message, MessageAttachment } from "@/types/message";
+import { FRIEND_CARD_ATTACHMENT_TYPE } from "@/lib/friend-card";
 import { User } from "@/types/user";
 import { UnreadSummaryDialog } from "@/components/chat/unread-summary-dialog";
 import { usePresignedUrl } from "@/hooks/use-profile";
+import { chatService } from "@/api/chat";
+import { toast } from "sonner";
 
 type ChatBackgroundKey = "default" | "sky" | "sunset" | "mint" | "night";
 
@@ -91,9 +106,11 @@ type GroupMemberView = {
 
 const URL_REGEX = /(https?:\/\/[^\s]+)/gi;
 
-type CachedMediaItem = {
+type CachedFileItem = {
   id: string;
   source: string;
+  fileType?: string;
+  fileName?: string;
   createdAt: string;
 };
 
@@ -104,7 +121,7 @@ type CachedLinkItem = {
 };
 
 type SideSheetCache = {
-  media: CachedMediaItem[];
+  files: CachedFileItem[];
   links: CachedLinkItem[];
 };
 
@@ -178,16 +195,19 @@ export function ChatHeader({
   const { startCall, isBusy } = useVideoCall();
 
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [sheetTab, setSheetTab] = useState<"media" | "links" | "search">(
-    "media",
-  );
+  const [sheetTab, setSheetTab] = useState<"assets" | "search">("assets");
   const [searchQuery, setSearchQuery] = useState("");
   const [groupOpen, setGroupOpen] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteSelectedIds, setInviteSelectedIds] = useState<string[]>([]);
-  const [manageOpen, setManageOpen] = useState(false);
+  const [groupDrawerOpen, setGroupDrawerOpen] = useState(false);
+  const [groupDrawerTab, setGroupDrawerTab] = useState<"info" | "members">(
+    "info",
+  );
+  const [groupDraftName, setGroupDraftName] = useState("");
+  const [groupDraftAvatarKey, setGroupDraftAvatarKey] = useState("");
   const [backgroundOpen, setBackgroundOpen] = useState(false);
   const [selectedBackground, setSelectedBackground] =
     useState<ChatBackgroundKey>("default");
@@ -201,6 +221,7 @@ export function ChatHeader({
   const leaveGroupMutation = useLeaveGroup();
   const removeMemberMutation = useRemoveMemberFromGroup();
   const transferAdminMutation = useTransferGroupAdmin();
+  const updateGroupMutation = useUpdateGroupConversation();
   const dissolveMutation = useDissolveGroup();
 
   // Derive partnerId from conversation members for private chats
@@ -337,6 +358,27 @@ export function ChatHeader({
     );
   };
 
+    const openGroupDrawer = () => {
+      setGroupDrawerTab("info");
+      setGroupDraftName(conversation?.name || displayName || "");
+      setGroupDraftAvatarKey(conversation?.groupAvatar || "");
+      setGroupDrawerOpen(true);
+    };
+
+    const handleSaveGroupInfo = async (payload: {
+      name?: string;
+      groupAvatar?: string;
+    }) => {
+      if (!currentId) return;
+
+      await updateGroupMutation.mutateAsync({
+        conversationId: currentId,
+        payload,
+      });
+    };
+
+
+
   return (
     <>
       <div className="h-[70px] md:h-[80px] border-b border-slate-200/60 bg-white/80 backdrop-blur-xl sticky top-0 z-30 shadow-sm px-3 md:px-6">
@@ -417,20 +459,11 @@ export function ChatHeader({
                 <DropdownMenuItem
                   className="h-10 rounded-lg px-3 text-[15px] font-medium text-slate-700"
                   onClick={() => {
-                    setSheetTab("media");
+                    setSheetTab("assets");
                     setSheetOpen(true);
                   }}
                 >
-                  <ImageIcon className="text-slate-500" /> Xem hình ảnh đã gửi
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="h-10 rounded-lg px-3 text-[15px] font-medium text-slate-700"
-                  onClick={() => {
-                    setSheetTab("links");
-                    setSheetOpen(true);
-                  }}
-                >
-                  <Link2 className="text-slate-500" /> Xem link đã gửi
+                  <FileText className="text-slate-500" /> Xem ảnh/tệp/link đã gửi
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   className="h-10 rounded-lg px-3 text-[15px] font-medium text-slate-700"
@@ -498,12 +531,28 @@ export function ChatHeader({
                 {/* Group chat options */}
                 {conversation?.type === "group" && (
                   <>
-                    <DropdownMenuItem
-                      className="h-10 rounded-lg px-3 text-[15px] font-medium text-red-600 focus:text-red-700"
-                      onClick={() => setLeaveConfirmOpen(true)}
-                    >
-                      <LogOut className="text-red-500" /> Rời nhóm
-                    </DropdownMenuItem>
+                    {!isAdmin ? (
+                      <DropdownMenuItem
+                        className="h-10 rounded-lg px-3 text-[15px] font-medium text-red-600 focus:text-red-700"
+                        onClick={() => {
+                          setLeaveConfirmOpen(true);
+                        }}
+                      >
+                        <LogOut className="text-red-500" /> Rời nhóm
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem
+                        className="h-10 rounded-lg px-3 text-[15px] font-medium text-slate-500"
+                        onClick={() => {
+                          toast.error(
+                            "Bạn cần chuyển quyền admin trước khi rời nhóm",
+                          );
+                        }}
+                      >
+                        <LogOut className="text-slate-400" />
+                        Chuyển quyền admin trước khi rời nhóm
+                      </DropdownMenuItem>
+                    )}
 
                     <DropdownMenuSeparator />
 
@@ -518,10 +567,9 @@ export function ChatHeader({
                       <>
                         <DropdownMenuItem
                           className="h-10 rounded-lg px-3 text-[15px] font-medium text-slate-700"
-                          onClick={() => setManageOpen(true)}
+                          onClick={openGroupDrawer}
                         >
-                          <Trash2 className="text-slate-500" /> Quản lý thành
-                          viên
+                          <Trash2 className="text-slate-500" /> Thông tin nhóm
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="h-10 rounded-lg px-3 text-[15px] font-medium text-red-600 focus:text-red-700"
@@ -547,11 +595,7 @@ export function ChatHeader({
         searchQuery={searchQuery}
         onSearchQueryChange={setSearchQuery}
         title={
-          sheetTab === "media"
-            ? "Hình ảnh đã gửi"
-            : sheetTab === "links"
-              ? "Liên kết đã gửi"
-              : "Tìm kiếm tin nhắn"
+          sheetTab === "assets" ? "Kho ảnh/tệp/link đã gửi" : "Tìm kiếm tin nhắn"
         }
       />
           <UnreadSummaryDialog
@@ -615,9 +659,17 @@ export function ChatHeader({
         }}
         inviting={addMemberMutation.isPending}
       />
-      <ManageMembersDialog
-        open={manageOpen}
-        onOpenChange={setManageOpen}
+      <GroupSettingsDrawer
+        open={groupDrawerOpen}
+        onOpenChange={setGroupDrawerOpen}
+        activeTab={groupDrawerTab}
+        onTabChange={setGroupDrawerTab}
+        draftName={groupDraftName}
+        onDraftNameChange={setGroupDraftName}
+        draftAvatarKey={groupDraftAvatarKey}
+        onDraftAvatarChange={setGroupDraftAvatarKey}
+        onSaveGroupInfo={handleSaveGroupInfo}
+        savingGroupInfo={updateGroupMutation.isPending}
         members={groupMembers}
         isAdmin={isAdmin}
         onTransferAdmin={(targetUserId) => {
@@ -653,6 +705,12 @@ export function ChatHeader({
             <Button
               variant="destructive"
               onClick={() => {
+                if (isAdmin) {
+                  toast.error("Bạn cần chuyển quyền admin trước khi rời nhóm");
+                  setLeaveConfirmOpen(false);
+                  return;
+                }
+
                 if (!currentId) return;
                 leaveGroupMutation.mutate(currentId, {
                   onSuccess: () => {
@@ -751,7 +809,7 @@ export function ChatHeader({
   );
 }
 
-// Side sheet content for media/links/search
+// Side sheet content for assets/search
 function MessagesSideSheet({
   open,
   onOpenChange,
@@ -764,13 +822,17 @@ function MessagesSideSheet({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  tab: "media" | "links" | "search";
+  tab: "assets" | "search";
   conversationId?: string;
   messages: Message[];
   searchQuery: string;
   onSearchQueryChange: (v: string) => void;
   title: string;
 }) {
+  const [assetView, setAssetView] = useState<"images" | "files" | "links">(
+    "images",
+  );
+
   const getMessageId = useCallback((message: Message): string | undefined => {
     return message.id || message._id;
   }, []);
@@ -780,8 +842,35 @@ function MessagesSideSheet({
     [conversationId],
   );
 
-  const [cachedMedia, setCachedMedia] = useState<CachedMediaItem[]>([]);
-  const [cachedLinks, setCachedLinks] = useState<CachedLinkItem[]>([]);
+  const { cachedFiles, cachedLinks } = useMemo(() => {
+    if (!cacheKey || typeof window === "undefined") {
+      return {
+        cachedFiles: [] as CachedFileItem[],
+        cachedLinks: [] as CachedLinkItem[],
+      };
+    }
+
+    try {
+      const raw = window.localStorage.getItem(cacheKey);
+      if (!raw) {
+        return {
+          cachedFiles: [] as CachedFileItem[],
+          cachedLinks: [] as CachedLinkItem[],
+        };
+      }
+
+      const parsed = JSON.parse(raw) as SideSheetCache;
+      return {
+        cachedFiles: Array.isArray(parsed?.files) ? parsed.files : [],
+        cachedLinks: Array.isArray(parsed?.links) ? parsed.links : [],
+      };
+    } catch {
+      return {
+        cachedFiles: [] as CachedFileItem[],
+        cachedLinks: [] as CachedLinkItem[],
+      };
+    }
+  }, [cacheKey]);
 
   const isDirectMediaUrl = useCallback((value?: string) => {
     if (!value) return false;
@@ -795,29 +884,29 @@ function MessagesSideSheet({
     return date.toISOString();
   }, []);
 
-  const extractMedia = useCallback(
-    (inputMessages: Message[]): CachedMediaItem[] => {
-      const collected: CachedMediaItem[] = [];
+  const extractFiles = useCallback(
+    (inputMessages: Message[]): CachedFileItem[] => {
+      const collected: CachedFileItem[] = [];
 
       inputMessages.forEach((message, index) => {
         const messageId = String(message.id || message._id || `m-${index}`);
         const createdAt = normalizeDateString(message.createdAt);
 
-        const imageAttachment = (message.attachments || []).find(
-          (a: MessageAttachment) => (a.fileType || "").startsWith("image"),
-        );
+        (message.attachments || []).forEach((attachment: MessageAttachment, attachmentIndex: number) => {
+          if (attachment.fileType === FRIEND_CARD_ATTACHMENT_TYPE) {
+            return;
+          }
 
-        const source =
-          imageAttachment?.url ||
-          imageAttachment?.key ||
-          (message.type === "image" ? String(message.content || "") : "");
+          const source = attachment.key || attachment.url || "";
+          if (!source) return;
 
-        if (!source) return;
-
-        collected.push({
-          id: `${messageId}-${source}`,
-          source,
-          createdAt,
+          collected.push({
+            id: `${messageId}-${attachmentIndex}-${source}`,
+            source,
+            fileType: attachment.fileType,
+            fileName: attachment.fileName,
+            createdAt,
+          });
         });
       });
 
@@ -851,35 +940,13 @@ function MessagesSideSheet({
     [normalizeDateString],
   );
 
-  useEffect(() => {
-    if (!cacheKey || typeof window === "undefined") {
-      setCachedMedia([]);
-      setCachedLinks([]);
-      return;
-    }
 
-    try {
-      const raw = window.localStorage.getItem(cacheKey);
-      if (!raw) {
-        setCachedMedia([]);
-        setCachedLinks([]);
-        return;
-      }
+  const fileMsgs = useMemo(() => {
+    const fromCurrentMessages = extractFiles(messages);
+    const map = new Map<string, CachedFileItem>();
 
-      const parsed = JSON.parse(raw) as SideSheetCache;
-      setCachedMedia(Array.isArray(parsed?.media) ? parsed.media : []);
-      setCachedLinks(Array.isArray(parsed?.links) ? parsed.links : []);
-    } catch {
-      setCachedMedia([]);
-      setCachedLinks([]);
-    }
-  }, [cacheKey]);
-
-  const mediaMsgs = useMemo(() => {
-    const fromCurrentMessages = extractMedia(messages);
-    const map = new Map<string, CachedMediaItem>();
-
-    cachedMedia.forEach((item) => {
+    cachedFiles.forEach((item) => {
+      if (item?.fileType === FRIEND_CARD_ATTACHMENT_TYPE) return;
       if (item?.id && item?.source) map.set(item.id, item);
     });
     fromCurrentMessages.forEach((item) => map.set(item.id, item));
@@ -888,7 +955,7 @@ function MessagesSideSheet({
       (left, right) =>
         new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
     );
-  }, [messages, cachedMedia, extractMedia]);
+  }, [messages, cachedFiles, extractFiles]);
 
   const linkMsgs = useMemo(() => {
     const fromCurrentMessages = extractLinks(messages);
@@ -905,16 +972,37 @@ function MessagesSideSheet({
     );
   }, [messages, cachedLinks, extractLinks]);
 
+  const isImageAsset = useCallback((item: CachedFileItem) => {
+    const normalizedType = String(item.fileType || "").toLowerCase();
+    const normalizedName = String(item.fileName || item.source || "").toLowerCase();
+    return (
+      normalizedType.startsWith("image/") ||
+      [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"].some((ext) =>
+        normalizedName.endsWith(ext),
+      )
+    );
+  }, []);
+
+  const imageItems = useMemo(
+    () => fileMsgs.filter((item) => isImageAsset(item)),
+    [fileMsgs, isImageAsset],
+  );
+
+  const fileItems = useMemo(
+    () => fileMsgs.filter((item) => !isImageAsset(item)),
+    [fileMsgs, isImageAsset],
+  );
+
   useEffect(() => {
     if (!cacheKey || typeof window === "undefined") return;
 
     const payload: SideSheetCache = {
-      media: mediaMsgs.slice(0, 500),
+      files: fileMsgs.slice(0, 500),
       links: linkMsgs.slice(0, 500),
     };
 
     window.localStorage.setItem(cacheKey, JSON.stringify(payload));
-  }, [cacheKey, mediaMsgs, linkMsgs]);
+  }, [cacheKey, fileMsgs, linkMsgs]);
 
   const searchMsgs = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -940,43 +1028,96 @@ function MessagesSideSheet({
             </div>
           </div>
         )}
+        {tab === "assets" && (
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                assetView === "images"
+                  ? "bg-blue-600 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+              onClick={() => setAssetView("images")}
+            >
+              Ảnh ({imageItems.length})
+            </button>
+            <button
+              type="button"
+              className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                assetView === "files"
+                  ? "bg-blue-600 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+              onClick={() => setAssetView("files")}
+            >
+              Tệp ({fileItems.length})
+            </button>
+            <button
+              type="button"
+              className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                assetView === "links"
+                  ? "bg-blue-600 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+              onClick={() => setAssetView("links")}
+            >
+              Liên kết ({linkMsgs.length})
+            </button>
+          </div>
+        )}
         <ScrollArea className="mt-4 h-[70vh]">
-          {tab === "media" && (
-            <div className="grid grid-cols-3 gap-2 pr-3">
-              {mediaMsgs.length === 0 ? (
-                <div className="text-sm text-slate-500">Chưa có hình ảnh</div>
-              ) : (
-                mediaMsgs.map((item) => (
-                  <MediaThumbnail
-                    key={item.id}
-                    source={item.source}
-                    isDirectMediaUrl={isDirectMediaUrl}
-                  />
-                ))
-              )}
-            </div>
-          )}
-          {tab === "links" && (
-            <div className="pr-3 space-y-2">
-              {linkMsgs.length === 0 ? (
-                <div className="text-sm text-slate-500">Chưa có liên kết</div>
-              ) : (
-                linkMsgs.map((item) => (
-                  <div key={item.id} className="p-2 border rounded-md">
-                    <a
-                      href={item.link}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-sm text-blue-600 break-all"
-                    >
-                      {item.link}
-                    </a>
-                    <div className="mt-1 text-xs text-slate-500">
-                      {new Date(item.createdAt).toLocaleString()}
+          {tab === "assets" && (
+            <div className="space-y-2 pr-3">
+              {assetView === "images" &&
+                (imageItems.length === 0 ? (
+                  <div className="text-sm text-slate-500">Chưa có ảnh nào</div>
+                ) : (
+                  imageItems.map((item) => (
+                    <FilePreview
+                      key={item.id}
+                      source={item.source}
+                      fileName={item.fileName}
+                      fileType={item.fileType}
+                      isDirectMediaUrl={isDirectMediaUrl}
+                    />
+                  ))
+                ))}
+
+              {assetView === "files" &&
+                (fileItems.length === 0 ? (
+                  <div className="text-sm text-slate-500">Chưa có tệp nào</div>
+                ) : (
+                  fileItems.map((item) => (
+                    <FilePreview
+                      key={item.id}
+                      source={item.source}
+                      fileName={item.fileName}
+                      fileType={item.fileType}
+                      isDirectMediaUrl={isDirectMediaUrl}
+                    />
+                  ))
+                ))}
+
+              {assetView === "links" &&
+                (linkMsgs.length === 0 ? (
+                  <div className="text-sm text-slate-500">Chưa có liên kết</div>
+                ) : (
+                  linkMsgs.map((item) => (
+                    <div key={item.id} className="p-2 border rounded-md">
+                      <a
+                        href={item.link}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sm text-blue-600 break-all"
+                      >
+                        {item.link}
+                      </a>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {new Date(item.createdAt).toLocaleString()}
+                      </div>
                     </div>
-                  </div>
-                ))
-              )}
+                  ))
+                ))}
             </div>
           )}
           {tab === "search" && (
@@ -1024,33 +1165,104 @@ function MessagesSideSheet({
   );
 }
 
-function MediaThumbnail({
+function FilePreview({
   source,
+  fileName,
+  fileType,
   isDirectMediaUrl,
 }: {
   source: string;
+  fileName?: string;
+  fileType?: string;
   isDirectMediaUrl: (value?: string) => boolean;
 }) {
   const needsPresigned = !isDirectMediaUrl(source);
   const { data } = usePresignedUrl(source, needsPresigned);
 
   const resolvedSrc = needsPresigned ? data?.viewUrl : source;
+  const normalizedType = String(fileType || "").toLowerCase();
+  const normalizedName = String(fileName || source).toLowerCase();
+  const isImage =
+    normalizedType.startsWith("image/") ||
+    [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"].some((ext) =>
+      normalizedName.endsWith(ext),
+    );
+  const isAudio =
+    normalizedType.startsWith("audio/") ||
+    [".mp3", ".wav", ".ogg", ".m4a", ".aac", ".webm"].some((ext) =>
+      normalizedName.endsWith(ext),
+    );
+  const isVideo =
+    normalizedType.startsWith("video/") ||
+    [".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"].some((ext) =>
+      normalizedName.endsWith(ext),
+    );
 
   if (!resolvedSrc) {
     return (
-      <div className="flex items-center justify-center w-full h-24 border rounded-md bg-slate-50 text-xs text-slate-400">
+      <div className="flex items-center justify-center w-full h-24 rounded-2xl border border-slate-200 bg-slate-50 text-xs text-slate-400">
         Đang tải...
       </div>
     );
   }
 
+  if (isImage) {
+    return (
+      <a href={resolvedSrc} target="_blank" rel="noreferrer" className="block">
+        <img
+          src={resolvedSrc}
+          alt={fileName || "image"}
+          className="h-24 w-full rounded-2xl border border-slate-200 object-cover"
+          loading="lazy"
+        />
+      </a>
+    );
+  }
+
+  if (isAudio) {
+    return (
+      <a
+        href={resolvedSrc}
+        target="_blank"
+        rel="noreferrer"
+        className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm"
+      >
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+          <Sparkles className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium text-slate-900">{fileName || "Tệp âm thanh"}</div>
+          <div className="text-xs text-slate-500">Audio</div>
+        </div>
+      </a>
+    );
+  }
+
+  if (isVideo) {
+    return (
+      <a href={resolvedSrc} target="_blank" rel="noreferrer" className="block">
+        <video controls src={resolvedSrc} className="h-32 w-full rounded-2xl border border-slate-200 bg-black" />
+      </a>
+    );
+  }
+
   return (
-    <img
-      src={resolvedSrc}
-      alt="image"
-      className="object-cover w-full h-24 border rounded-md"
-      loading="lazy"
-    />
+    <a
+      href={resolvedSrc}
+      target="_blank"
+      rel="noreferrer"
+      className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm"
+    >
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-700">
+        <FileText className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-slate-900">
+          {fileName || "Tệp đính kèm"}
+        </div>
+        <div className="text-xs text-slate-500">{fileType || "File"}</div>
+      </div>
+    </a>
   );
 }
 
@@ -1260,10 +1472,18 @@ function InviteMembersDialog({
   );
 }
 
-// Dialog để quản lý thành viên nhóm
-function ManageMembersDialog({
+// Drawer để chỉnh thông tin và quản lý thành viên nhóm
+function GroupSettingsDrawer({
   open,
   onOpenChange,
+  activeTab,
+  onTabChange,
+  draftName,
+  onDraftNameChange,
+  draftAvatarKey,
+  onDraftAvatarChange,
+  onSaveGroupInfo,
+  savingGroupInfo,
   members,
   isAdmin,
   onTransferAdmin,
@@ -1273,6 +1493,14 @@ function ManageMembersDialog({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
+  activeTab: "info" | "members";
+  onTabChange: (tab: "info" | "members") => void;
+  draftName: string;
+  onDraftNameChange: (value: string) => void;
+  draftAvatarKey: string;
+  onDraftAvatarChange: (value: string) => void;
+  onSaveGroupInfo: (payload: { name?: string; groupAvatar?: string }) => Promise<void> | void;
+  savingGroupInfo: boolean;
   members: GroupMemberView[];
   isAdmin: boolean;
   onTransferAdmin: (memberId: string) => void;
@@ -1281,129 +1509,337 @@ function ManageMembersDialog({
   removing: boolean;
 }) {
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
-  const [confirmTransferId, setConfirmTransferId] = useState<string | null>(
-    null,
-  );
+  const [confirmTransferId, setConfirmTransferId] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setConfirmRemoveId(null);
+    setConfirmTransferId(null);
+  }, [open]);
+
+  const hasDraftChanges = draftName.trim().length > 0;
+
+  const handlePickAvatar = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    if (!isAdmin) {
+      toast.error("Chỉ admin mới có thể đổi avatar nhóm");
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Avatar nhóm phải là ảnh");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Ảnh avatar không được vượt quá 5MB");
+      return;
+    }
+
+    try {
+      setAvatarUploading(true);
+      const presign = await chatService.createChatUploadPresignPut({
+        fileName: file.name,
+        contentType: file.type || "image/jpeg",
+        fileSize: file.size,
+      });
+
+      await chatService.uploadToPresignedUrl(presign.uploadUrl, file);
+      onDraftAvatarChange(presign.key);
+      await onSaveGroupInfo({ groupAvatar: presign.key });
+    } catch (error: unknown) {
+      const message =
+        typeof error === "object" &&
+        error !== null &&
+        "response" in error &&
+        typeof (error as { response?: { data?: { message?: string } } }).response
+          ?.data?.message === "string"
+          ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+          : "Không thể cập nhật avatar nhóm";
+      toast.error(message);
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  const handleSaveInfo = async () => {
+    const trimmedName = draftName.trim();
+    if (!trimmedName) {
+      toast.error("Tên nhóm không được để trống");
+      return;
+    }
+
+    await onSaveGroupInfo({
+      name: trimmedName,
+      groupAvatar: draftAvatarKey || undefined,
+    });
+  };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Quản lý thành viên</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-2 overflow-auto max-h-64">
-          {members.length === 0 ? (
-            <div className="text-sm text-slate-500">
-              Không có thành viên khác
-            </div>
-          ) : (
-            members.map((member) => (
-              <div
-                key={member.userId}
-                className="flex items-center justify-between p-2 border rounded-md border-slate-200/80"
-              >
-                <div className="flex items-center gap-3">
-                  {member.avatar ? (
-                    <img
-                      src={member.avatar}
-                      alt={member.displayName}
-                      className="object-cover w-8 h-8 rounded-full"
-                    />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-slate-200" />
-                  )}
-                  <div className="text-sm text-slate-800">
-                    {member.displayName}
-                  </div>
-                  {member.role === "admin" && (
-                    <span className="px-2 py-1 text-xs text-blue-800 bg-blue-100 rounded">
-                      Admin
-                    </span>
-                  )}
-                </div>
-                {isAdmin && member.role !== "admin" && (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setConfirmTransferId(member.userId)}
-                      disabled={transferring || removing}
-                    >
-                      Chuyển admin
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => setConfirmRemoveId(member.userId)}
-                      disabled={removing || transferring}
-                    >
-                      Xóa
-                    </Button>
-                  </div>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-full sm:max-w-xl overflow-hidden p-0">
+        <div className="flex h-full flex-col">
+          <SheetHeader className="border-b border-slate-200/80 px-5 py-4 text-left">
+            <SheetTitle className="text-xl">Thông tin nhóm</SheetTitle>
+            <SheetDescription>
+              Chỉnh tên, avatar và quản lý thành viên theo kiểu drawer.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="border-b border-slate-200/80 px-5 py-4">
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <PresignedAvatar
+                  avatarKey={draftAvatarKey}
+                  displayName={draftName || "Nhóm"}
+                  className="h-16 w-16 border border-slate-200 shadow-sm"
+                  fallbackClassName="bg-gradient-to-br from-blue-500 to-cyan-500 text-white font-semibold"
+                />
+                {avatarUploading && (
+                  <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-white">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  </span>
                 )}
               </div>
-            ))
-          )}
+
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-lg font-semibold text-slate-900 truncate">
+                    {draftName || "Nhóm"}
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                    {isAdmin ? "Admin" : "Thành viên"}
+                  </span>
+                </div>
+                <div className="text-sm text-slate-500">
+                  {members.length} thành viên trong nhóm
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 border-b border-slate-200/80 px-5 py-3">
+            <button
+              type="button"
+              onClick={() => onTabChange("info")}
+              className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                activeTab === "info"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              Thông tin
+            </button>
+            <button
+              type="button"
+              onClick={() => onTabChange("members")}
+              className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                activeTab === "members"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              Thành viên
+            </button>
+          </div>
+
+          <ScrollArea className="flex-1">
+            <div className="space-y-5 px-5 py-4">
+              {activeTab === "info" ? (
+                <div className="space-y-5">
+                  <div className="rounded-3xl border border-slate-200/80 bg-slate-50 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">
+                          Ảnh đại diện nhóm
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          Ảnh mới sẽ được lưu và cập nhật ngay sau khi upload.
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => avatarInputRef.current?.click()}
+                        disabled={!isAdmin || avatarUploading}
+                      >
+                        <Upload className="mr-2 h-4 w-4" />
+                        Đổi ảnh
+                      </Button>
+                    </div>
+                    <input
+                      ref={avatarInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handlePickAvatar}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">
+                      Tên nhóm
+                    </label>
+                    <Input
+                      value={draftName}
+                      onChange={(event) => onDraftNameChange(event.target.value)}
+                      placeholder="Nhập tên nhóm"
+                      disabled={!isAdmin}
+                      className="h-11 rounded-2xl border-slate-200 bg-white"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      onClick={handleSaveInfo}
+                      disabled={!isAdmin || savingGroupInfo || !hasDraftChanges}
+                    >
+                      {savingGroupInfo ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Đang lưu...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="mr-2 h-4 w-4" />
+                          Lưu thay đổi
+                        </>
+                      )}
+                    </Button>
+                    {!isAdmin && (
+                      <span className="text-xs text-slate-500">
+                        Chỉ admin mới có thể chỉnh sửa.
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {members.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                      Không có thành viên khác
+                    </div>
+                  ) : (
+                    members.map((member) => (
+                      <div
+                        key={member.userId}
+                        className="rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-3">
+                            {member.avatar ? (
+                              <img
+                                src={member.avatar}
+                                alt={member.displayName}
+                                className="h-10 w-10 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="h-10 w-10 rounded-full bg-slate-200" />
+                            )}
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium text-slate-900">
+                                {member.displayName}
+                              </div>
+                              <div className="text-xs text-slate-500 capitalize">
+                                {member.role === "admin" ? "Admin" : "Thành viên"}
+                              </div>
+                            </div>
+                          </div>
+
+                          {isAdmin && member.role !== "admin" && (
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setConfirmTransferId(member.userId)}
+                                disabled={transferring || removing}
+                              >
+                                Chuyển admin
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => setConfirmRemoveId(member.userId)}
+                                disabled={removing || transferring}
+                              >
+                                Xóa
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+
+                  {confirmTransferId && (
+                    <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                      <p className="mb-3 text-sm text-blue-800">
+                        Chuyển quyền admin cho thành viên này?
+                      </p>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setConfirmTransferId(null)}
+                          disabled={transferring}
+                        >
+                          Hủy
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            onTransferAdmin(confirmTransferId);
+                            setConfirmTransferId(null);
+                          }}
+                          disabled={transferring}
+                        >
+                          {transferring ? "Đang chuyển..." : "Xác nhận"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {confirmRemoveId && (
+                    <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                      <p className="mb-3 text-sm text-red-800">
+                        Xóa thành viên này khỏi nhóm?
+                      </p>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setConfirmRemoveId(null)}
+                          disabled={removing}
+                        >
+                          Hủy
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => {
+                            onRemoveMember(confirmRemoveId);
+                            setConfirmRemoveId(null);
+                          }}
+                          disabled={removing}
+                        >
+                          {removing ? "Đang xóa..." : "Xóa"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </ScrollArea>
         </div>
-        {confirmTransferId && (
-          <div className="p-3 border border-blue-200 rounded-md bg-blue-50">
-            <p className="mb-2 text-sm text-blue-800">
-              Chuyển quyền admin cho thành viên này?
-            </p>
-            <div className="flex justify-end gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setConfirmTransferId(null)}
-                disabled={transferring}
-              >
-                Hủy
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => {
-                  onTransferAdmin(confirmTransferId);
-                  setConfirmTransferId(null);
-                }}
-                disabled={transferring}
-              >
-                {transferring ? "Đang chuyển..." : "Xác nhận"}
-              </Button>
-            </div>
-          </div>
-        )}
-        {confirmRemoveId && (
-          <div className="p-3 border border-red-200 rounded-md bg-red-50">
-            <p className="mb-2 text-sm text-red-800">
-              Xóa thành viên này khỏi nhóm?
-            </p>
-            <div className="flex justify-end gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setConfirmRemoveId(null)}
-                disabled={removing}
-              >
-                Hủy
-              </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={() => {
-                  onRemoveMember(confirmRemoveId);
-                  setConfirmRemoveId(null);
-                }}
-                disabled={removing}
-              >
-                {removing ? "Đang xóa..." : "Xóa"}
-              </Button>
-            </div>
-          </div>
-        )}
-        <DialogFooter>
-          <Button onClick={() => onOpenChange(false)}>Đóng</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }

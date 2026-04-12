@@ -7,9 +7,9 @@ import {
   AiConversationResponse,
   ConversationsResponse,
   MessagesResponse,
-  ConversationDetailsResponse,
   GetMessagesParams,
   SendAiMessagePayload,
+  UpdateGroupConversationPayload,
 } from "@/api/chat";
 import { MessageAttachment } from "@/types/message";
 import { userService } from "@/api/user";
@@ -227,7 +227,7 @@ export const useCreateConversation = () => {
 
   return useMutation({
     mutationFn: chatService.createConversation,
-    onSuccess: (newConversation: Conversation) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
       toast.success("Tạo cuộc trò chuyện thành công");
     },
@@ -729,6 +729,30 @@ export const useTransferGroupAdmin = () => {
     onError: (error: any) => {
       toast.error(
         error?.response?.data?.message || "Không thể chuyển quyền admin",
+      );
+    },
+  });
+};
+
+export const useUpdateGroupConversation = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      conversationId,
+      payload,
+    }: {
+      conversationId: string;
+      payload: UpdateGroupConversationPayload;
+    }) => chatService.updateGroupConversation(conversationId, payload),
+    onSuccess: (conversation, { conversationId }) => {
+      queryClient.setQueryData(["conversation", conversationId], conversation);
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      toast.success("Đã cập nhật thông tin nhóm");
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message || "Không thể cập nhật thông tin nhóm",
       );
     },
   });

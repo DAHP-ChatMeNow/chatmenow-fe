@@ -116,47 +116,6 @@ const formatDateTime = (value?: string | null) => {
   });
 };
 
-const urgencyClassName = (value?: string) => {
-  switch (value) {
-    case "high":
-      return "bg-rose-100 text-rose-700 border-rose-200";
-    case "low":
-      return "bg-emerald-100 text-emerald-700 border-emerald-200";
-    default:
-      return "bg-amber-100 text-amber-700 border-amber-200";
-  }
-};
-
-function SummaryListSection({
-  title,
-  items,
-  emptyText,
-}: {
-  title: string;
-  items: string[];
-  emptyText: string;
-}) {
-  return (
-    <div className="space-y-2">
-      <h4 className="text-sm font-semibold text-slate-900">{title}</h4>
-      {items.length === 0 ? (
-        <p className="text-sm text-slate-500">{emptyText}</p>
-      ) : (
-        <ul className="space-y-2">
-          {items.map((item, index) => (
-            <li
-              key={`${title}-${index}`}
-              className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-700 shadow-sm"
-            >
-              {item}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 export function UnreadSummaryDialog({
   open,
   onOpenChange,
@@ -186,11 +145,6 @@ export function UnreadSummaryDialog({
   const [selectedHistoryDetail, setSelectedHistoryDetail] =
     useState<UnreadSummaryMessagesResponse | null>(null);
 
-  const selectedHistoryItem = useMemo(
-    () => historyItems.find((item) => item._id === selectedHistoryId) || null,
-    [historyItems, selectedHistoryId],
-  );
-
   const fetchSummary = async (forceRefresh = false) => {
     if (!conversationId) return;
 
@@ -211,10 +165,16 @@ export function UnreadSummaryDialog({
       });
       setSummary(result);
       await fetchCandidates();
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.message || "Không thể lấy bản tóm tắt tin nhắn",
-      );
+    } catch (err: unknown) {
+      const message =
+        typeof err === "object" &&
+        err !== null &&
+        "response" in err &&
+        typeof (err as { response?: { data?: { message?: string } } }).response
+          ?.data?.message === "string"
+          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+          : "Không thể lấy bản tóm tắt tin nhắn";
+      setError(message as any);
     } finally {
       setLoadingSummary(false);
       setSubmittingSummary(false);
@@ -458,7 +418,7 @@ export function UnreadSummaryDialog({
                     <div className={`rounded-3xl border-2 border-transparent ${theme.overviewContainerBg} p-5 shadow-md`}>
                       <div className="mb-4 flex items-center justify-between gap-2">
                         <h3 className={`text-lg font-bold bg-gradient-to-r ${theme.overviewTextGradient} bg-clip-text text-transparent`}>
-                          📋 Tổng quan
+                          📋 Nội dung tóm tắt
                         </h3>
                         <div className={`inline-flex items-center gap-2 rounded-full bg-gradient-to-r ${theme.badgeBg} px-4 py-1.5 text-xs font-semibold ${theme.badgeText}`}>
                           <span className="relative flex h-2 w-2">

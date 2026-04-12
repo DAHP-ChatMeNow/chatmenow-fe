@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useRef, useEffect, useState, useCallback, useMemo } from "react";
+import { Fragment, useRef, useEffect, useState, useCallback, useMemo, type MouseEvent } from "react";
 import {
   FileAudio2,
   MoreVertical,
@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ChatHeader } from "@/components/chat/chat-header";
 import { ChatInput } from "@/components/chat/chat-input";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   useAiConversation,
   useConversation,
@@ -34,6 +34,10 @@ import {
   useSendMessage,
   useConversationDisplay,
 } from "@/hooks/use-chat";
+import {
+  useGetFriendProfile,
+  useSendFriendRequest,
+} from "@/hooks/use-contact";
 import { MessageSkeleton } from "@/components/skeletons/message-skeleton";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useSocket } from "@/components/providers/socket-provider";
@@ -45,6 +49,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { chatService, MessagesResponse } from "@/api/chat";
 import { usePresignedUrl } from "@/hooks/use-profile";
 import { toast } from "sonner";
+import {
+  decodeFriendCardPayload,
+  FRIEND_CARD_ATTACHMENT_TYPE,
+} from "@/lib/friend-card";
 
 type ChatBackgroundKey = "default" | "sky" | "sunset" | "mint" | "night";
 
@@ -167,6 +175,103 @@ const attachmentKeyOrUrl = (attachment: MessageAttachment) => {
   if (!attachment.url) return "";
   return attachment.url;
 };
+
+function FriendCardBubble({
+  attachment,
+  isMe,
+}: {
+  attachment: MessageAttachment;
+  isMe: boolean;
+}) {
+  const router = useRouter();
+  const { mutate: sendFriendRequest, isPending: isSendingFriendRequest } =
+    useSendFriendRequest();
+  const card = decodeFriendCardPayload(attachment.url);
+  const { data: ownerProfile, isLoading: isLoadingFriendState } =
+    useGetFriendProfile(card?.userId || "");
+
+  if (!card) {
+    return null;
+  }
+
+  const isFriend = Boolean(ownerProfile?.isFriend);
+  const canShowAddFriend = !isFriend && !isLoadingFriendState && !isMe;
+
+  const handleOpenProfile = () => {
+    router.push(card.profileUrl);
+  };
+
+  const handleAddFriend = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (!card.userId || isSendingFriendRequest) return;
+
+    sendFriendRequest(card.userId, {
+      onSuccess: () => {
+        router.push(card.profileUrl);
+      },
+    });
+  };
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={handleOpenProfile}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          handleOpenProfile();
+        }
+      }}
+      className={`w-full max-w-[280px] rounded-2xl border p-3 text-left shadow-sm transition-transform hover:scale-[1.01] ${
+        isMe
+          ? "border-blue-400/40 bg-white/10 text-white"
+          : "border-slate-200 bg-white text-slate-800"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <PresignedAvatar
+          avatarKey={card.avatar}
+          displayName={card.displayName}
+          className="h-12 w-12 shrink-0"
+          fallbackClassName={isMe ? "bg-white/20 text-white" : "bg-slate-200 text-slate-600"}
+        />
+        <div className="min-w-0 flex-1">
+          <div className={`truncate text-sm font-semibold ${isMe ? "text-white" : "text-slate-900"}`}>
+            {card.displayName}
+          </div>
+          <div className={`truncate text-xs ${isMe ? "text-blue-100" : "text-slate-500"}`}>
+            {card.email || "Danh thiếp"}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3">
+        {canShowAddFriend ? (
+          <Button
+            type="button"
+            size="sm"
+            className="w-full rounded-xl"
+            onClick={handleAddFriend}
+            disabled={isSendingFriendRequest}
+          >
+            {isSendingFriendRequest ? "Đang gửi..." : "Kết bạn"}
+          </Button>
+        ) : (
+          <div
+            className={`rounded-xl px-3 py-2 text-xs font-medium ${
+              isMe
+                ? "bg-white/10 text-blue-50"
+                : "bg-slate-50 text-slate-600"
+            }`}
+          >
+            Mở danh thiếp
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 const WAVEFORM_BARS = [5, 10, 7, 13, 9, 15, 8, 12, 6, 11, 7, 14, 9, 10];
 const AUDIO_WAVE_SCALE = 0.72;
@@ -312,6 +417,10 @@ function MessageAttachmentItem({
   attachment: MessageAttachment;
   isMe: boolean;
 }) {
+  if (attachment.fileType === FRIEND_CARD_ATTACHMENT_TYPE || attachment.fileType === "contact-card") {
+    return <FriendCardBubble attachment={attachment} isMe={isMe} />;
+  }
+
   const rawKeyOrUrl = attachmentKeyOrUrl(attachment);
   const direct = isDirectMediaUrl(rawKeyOrUrl);
   const { data: presigned } = usePresignedUrl(
