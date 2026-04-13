@@ -32,6 +32,9 @@ import {
   useSendAiMessage,
   useSendMessage,
   useConversationDisplay,
+  useReactToMessage,
+  usePinMessage,
+  useUnpinMessage,
 } from "@/hooks/use-chat";
 import { MessageSkeleton } from "@/components/skeletons/message-skeleton";
 import { useAuthStore } from "@/store/use-auth-store";
@@ -529,6 +532,9 @@ export default function ChatDetailClient({
   const { mutate: editMessage, isPending: isEditPending } = useEditMessage();
   const { mutate: deleteMessageForMe, isPending: isDeletePending } =
     useDeleteMessageForMe();
+  const { mutate: reactToMessage } = useReactToMessage();
+  const { mutate: pinMessage } = usePinMessage();
+  const { mutate: unpinMessage } = useUnpinMessage();
   const queryClient = useQueryClient();
   const { socket, isConnected } = useSocket();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -551,6 +557,8 @@ export default function ChatDetailClient({
   >(null);
   const [backgroundKey, setBackgroundKey] =
     useState<ChatBackgroundKey>("default");
+  const [reactionPickerMessageId, setReactionPickerMessageId] = useState<string | null>(null);
+  const reactionPickerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const getMessageId = useCallback((message: Message): string | undefined => {
     return message.id || message._id;
@@ -833,6 +841,35 @@ export default function ChatDetailClient({
     };
   }, [isConnected, conversationId, socket, aiMode]);
 
+  // Listen to real-time reaction updates
+  useEffect(() => {
+    if (!socket.current || !conversationId) return;
+
+    const handleMessageReaction = (updatedMessage: any) => {
+      if (!updatedMessage) return;
+      const msgId = updatedMessage.id || updatedMessage._id;
+      if (!msgId) return;
+
+      queryClient.setQueryData<MessagesResponse>(
+        ["messages", conversationId],
+        (old) => ({
+          ...(old || {}),
+          messages: (old?.messages || []).map((m) => {
+            const mId = m.id || m._id;
+            return mId === msgId
+              ? { ...m, reactions: updatedMessage.reactions || [] }
+              : m;
+          }),
+        }),
+      );
+    };
+
+    socket.current.on("message:reaction", handleMessageReaction);
+    return () => {
+      socket.current?.off("message:reaction", handleMessageReaction);
+    };
+  }, [isConnected, conversationId, socket, queryClient]);
+
   useEffect(() => {
     if (!socket.current || !conversationId || aiMode) return;
 
@@ -867,14 +904,18 @@ export default function ChatDetailClient({
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as HTMLElement | null;
+      // Close emote picker when clicking outside
+      if (!target?.closest("[data-reaction-scope='true']")) {
+        setReactionPickerMessageId(null);
+      }
       if (target?.closest("[data-message-action-scope='true']")) {
         return;
       }
-
       setActiveMessageActionsId(null);
     };
 
     document.addEventListener("pointerdown", handlePointerDown);
+
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown);
     };
@@ -1288,10 +1329,40 @@ export default function ChatDetailClient({
                     });
                   };
 
+                  const msgReactions = msg.reactions || [];
+                  const reactionSummary = msgReactions.reduce<Record<string, { count: number; users: string[] }>>(
+                    (acc, r) => {
+                      if (!acc[r.emoji]) acc[r.emoji] = { count: 0, users: [] };
+                      acc[r.emoji].count += 1;
+                      acc[r.emoji].users.push(r.userId);
+                      return acc;
+                    },
+                    {},
+                  );
+                  const myReaction = msgReactions.find((r) => r.userId === currentUserId);
+                  const isReactionPickerOpen = reactionPickerMessageId === messageId;
+
+                  const EMOTE_OPTIONS: { key: string; label: string; emoji: string }[] = [
+                    { key: "like", label: "Thích", emoji: "👍" },
+                    { key: "love", label: "Yêu thích", emoji: "❤️" },
+                    { key: "haha", label: "Haha", emoji: "😂" },
+                    { key: "sad", label: "Khóc", emoji: "😢" },
+                    { key: "angry", label: "Tức giận", emoji: "😠" },
+                    { key: "wow", label: "Lo lắng", emoji: "😮" },
+                  ];
+
+                  const isPinned = (() => {
+                    const conv = conversationFromDetail;
+                    if (!conv || !messageId) return false;
+                    return (conv as any).pinnedMessages?.some(
+                      (e: any) => String(e.messageId) === String(messageId),
+                    ) ?? false;
+                  })();
+
                   return (
                     <div
                       key={messageId}
-                      className={`flex items-end gap-2 ${isMe ? "justify-end" : "justify-start"}`}
+                      className={`group/row flex items-end gap-1.5 ${isMe ? "justify-end" : "justify-start"}`}
                     >
                       {!isMe && (
                         <PresignedAvatar
@@ -1300,154 +1371,262 @@ export default function ChatDetailClient({
                           className="w-8 h-8 shrink-0 self-end"
                         />
                       )}
-                      <div
-                        data-message-action-scope={isMe ? "true" : undefined}
-                        onTouchStart={() => {
-                          if (!isMe) return;
-                          handleMessageTouchStart(messageId, canShowActions);
-                        }}
-                        onTouchEnd={clearLongPressTimer}
-                        onTouchCancel={clearLongPressTimer}
-                        onTouchMove={clearLongPressTimer}
-                        className={`group rounded-2xl text-[14px] md:text-[15px] max-w-[84%] md:max-w-[70%] xl:max-w-[64%] ${
-                          isPlainAttachmentBubble
-                            ? "w-fit p-0 bg-transparent text-slate-800 shadow-none"
-                            : `px-4 py-2.5 shadow-sm ${
-                                isMe
-                                  ? "bg-blue-600 text-white rounded-br-none"
-                                  : "bg-white text-slate-800 border border-slate-100 rounded-bl-none"
-                              }`
-                        }`}
-                      >
-                        {attachments.length > 0 && (
-                          <div className={msg.content ? "mb-2" : ""}>
-                            <div className="flex flex-col gap-2">
-                              {attachments.map((attachment, index) => (
-                                <MessageAttachmentItem
-                                  key={`${attachment.key || attachment.url || attachment.fileName}-${index}`}
-                                  attachment={attachment}
-                                  isMe={isMe}
-                                />
+
+                      {/* Emote button LEFT side (for my messages) */}
+                      {isMe && !isUnsent && messageId && (
+                        <div data-reaction-scope="true" className="relative self-center shrink-0">
+                          <button
+                            type="button"
+                            title="Thả emote"
+                            onClick={() =>
+                              setReactionPickerMessageId(
+                                isReactionPickerOpen ? null : (messageId ?? null),
+                              )
+                            }
+                            className={`flex items-center justify-center w-7 h-7 rounded-full border text-base transition-all duration-150 opacity-0 group-hover/row:opacity-100 ${
+                              isReactionPickerOpen
+                                ? "!opacity-100 bg-yellow-50 border-yellow-300 text-yellow-500"
+                                : "bg-white border-slate-200 text-slate-400 hover:text-yellow-500 hover:border-yellow-300 hover:bg-yellow-50"
+                            }`}
+                          >
+                            😊
+                          </button>
+                          {isReactionPickerOpen && (
+                            <div
+                              className="absolute bottom-9 right-0 z-30 flex items-end gap-1 px-2 py-1.5 bg-white rounded-2xl shadow-xl border border-slate-100"
+                              onMouseLeave={() => setReactionPickerMessageId(null)}
+                            >
+                              {EMOTE_OPTIONS.map((opt) => (
+                                <button
+                                  key={opt.key}
+                                  type="button"
+                                  title={opt.label}
+                                  onClick={() => {
+                                    reactToMessage({ conversationId, messageId, emoji: opt.key });
+                                    setReactionPickerMessageId(null);
+                                  }}
+                                  className={`flex flex-col items-center gap-0.5 px-1 py-1 rounded-xl transition-all duration-100 hover:scale-125 ${
+                                    myReaction?.emoji === opt.key
+                                      ? "bg-blue-50 ring-2 ring-blue-300 scale-110"
+                                      : "hover:bg-slate-50"
+                                  }`}
+                                >
+                                  <span className="text-xl leading-none">{opt.emoji}</span>
+                                  <span className="text-[9px] text-slate-500 font-medium">{opt.label}</span>
+                                </button>
                               ))}
                             </div>
-                          </div>
-                        )}
-                        {msg.content ? renderMessageContent(msg.content) : null}
-                        {msg.type === "audio" && attachments.length === 0 && (
-                          <div
-                            className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm ${
-                              isMe
-                                ? "bg-blue-500/40 text-blue-50"
-                                : "bg-slate-100 text-slate-700"
-                            }`}
-                          >
-                            <FileAudio2 className="h-4 w-4" />
-                            Tin nhắn ghi âm
-                          </div>
-                        )}
-                        {isAiMessage && !isMe && (
-                          <div className="mt-1.5 flex justify-start">
-                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-600">
-                              AI
-                            </span>
-                          </div>
-                        )}
-                        {!isMe && statusText && (
-                          <div
-                            className={`text-[10px] mt-1 text-right ${
-                              isMe ? "text-blue-100" : "text-slate-400"
-                            }`}
-                            suppressHydrationWarning
-                          >
-                            {statusText}
-                          </div>
-                        )}
+                          )}
+                        </div>
+                      )}
 
-                        {!isMe && noteText && (
-                          <div
-                            className={`mt-1 text-[10px] ${
-                              isMe ? "text-blue-100" : "text-slate-400"
-                            }`}
-                          >
-                            {noteText}
-                          </div>
-                        )}
-
-                        {isMe && (statusText || noteText || canDeleteForMe) && (
-                          <div className="mt-1.5 flex items-center justify-end gap-1.5">
-                            {noteText && (
-                              <span
-                                className={`text-[10px] ${outgoingMetaClass}`}
-                              >
-                                {noteText}
+                      {/* Bubble column: bubble + reaction badges */}
+                      <div className="flex flex-col gap-1 min-w-0">
+                        <div
+                          data-message-action-scope={isMe ? "true" : undefined}
+                          onTouchStart={() => {
+                            if (!isMe) return;
+                            handleMessageTouchStart(messageId, canShowActions);
+                          }}
+                          onTouchEnd={clearLongPressTimer}
+                          onTouchCancel={clearLongPressTimer}
+                          onTouchMove={clearLongPressTimer}
+                          className={`group rounded-2xl text-[14px] md:text-[15px] max-w-[84%] md:max-w-[70%] xl:max-w-[64%] ${
+                            isPlainAttachmentBubble
+                              ? "w-fit p-0 bg-transparent text-slate-800 shadow-none"
+                              : `px-4 py-2.5 shadow-sm ${
+                                  isMe
+                                    ? "bg-blue-600 text-white rounded-br-none"
+                                    : "bg-white text-slate-800 border border-slate-100 rounded-bl-none"
+                                }`
+                          }`}
+                        >
+                          {attachments.length > 0 && (
+                            <div className={msg.content ? "mb-2" : ""}>
+                              <div className="flex flex-col gap-2">
+                                {attachments.map((attachment, index) => (
+                                  <MessageAttachmentItem
+                                    key={`${attachment.key || attachment.url || attachment.fileName}-${index}`}
+                                    attachment={attachment}
+                                    isMe={isMe}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {msg.content ? renderMessageContent(msg.content) : null}
+                          {msg.type === "audio" && attachments.length === 0 && (
+                            <div
+                              className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm ${
+                                isMe ? "bg-blue-500/40 text-blue-50" : "bg-slate-100 text-slate-700"
+                              }`}
+                            >
+                              <FileAudio2 className="h-4 w-4" />
+                              Tin nhắn ghi âm
+                            </div>
+                          )}
+                          {isAiMessage && !isMe && (
+                            <div className="mt-1.5 flex justify-start">
+                              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-600">
+                                AI
                               </span>
-                            )}
-                            {statusText && (
-                              <span
-                                className={`text-[10px] ${outgoingMetaClass}`}
-                                suppressHydrationWarning
-                              >
-                                {statusText}
-                              </span>
-                            )}
+                            </div>
+                          )}
+                          {!isMe && statusText && (
+                            <div
+                              className="text-[10px] mt-1 text-right text-slate-400"
+                              suppressHydrationWarning
+                            >
+                              {statusText}
+                            </div>
+                          )}
+                          {!isMe && noteText && (
+                            <div className="mt-1 text-[10px] text-slate-400">{noteText}</div>
+                          )}
+                          {isMe && (statusText || noteText || canDeleteForMe) && (
+                            <div className="mt-1.5 flex items-center justify-end gap-1.5">
+                              {noteText && (
+                                <span className={`text-[10px] ${outgoingMetaClass}`}>{noteText}</span>
+                              )}
+                              {statusText && (
+                                <span className={`text-[10px] ${outgoingMetaClass}`} suppressHydrationWarning>
+                                  {statusText}
+                                </span>
+                              )}
+                              {(canShowActions || (!isAiMessage && messageId && !isUnsent)) && (
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <button
+                                      type="button"
+                                      aria-label="Mở tùy chọn tin nhắn"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        if (messageId) setActiveMessageActionsId(messageId);
+                                      }}
+                                      className={`inline-flex items-center justify-center rounded-full p-1 transition-all duration-150 ${outgoingActionClass} ${
+                                        isActionsVisible
+                                          ? "opacity-100 pointer-events-auto"
+                                          : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
+                                      }`}
+                                      disabled={isEditPending || isUnsendPending || isDeletePending}
+                                    >
+                                      <MoreVertical className="h-4 w-4" />
+                                    </button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-44">
+                                    {canEdit && (
+                                      <DropdownMenuItem onClick={handleEditMessage}>
+                                        Sửa tin nhắn
+                                      </DropdownMenuItem>
+                                    )}
+                                    {canUnsend && (
+                                      <DropdownMenuItem onClick={handleUnsendMessage}>
+                                        Thu hồi tin nhắn
+                                      </DropdownMenuItem>
+                                    )}
+                                    {messageId && !isUnsent && (
+                                      <DropdownMenuItem
+                                        onClick={() => {
+                                          if (isPinned) {
+                                            unpinMessage({ conversationId, messageId });
+                                          } else {
+                                            pinMessage({ conversationId, messageId });
+                                          }
+                                        }}
+                                      >
+                                        {isPinned ? "Bỏ ghim tin nhắn" : "Ghim tin nhắn"}
+                                      </DropdownMenuItem>
+                                    )}
+                                    {canDeleteForMe && (
+                                      <DropdownMenuItem onClick={handleDeleteForMe}>
+                                        Xóa phía tôi
+                                      </DropdownMenuItem>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              )}
+                            </div>
+                          )}
+                        </div>
 
-                            {canShowActions && (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <button
-                                    type="button"
-                                    aria-label="Mở tùy chọn tin nhắn"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      if (messageId) {
-                                        setActiveMessageActionsId(messageId);
-                                      }
-                                    }}
-                                    className={`inline-flex items-center justify-center rounded-full p-1 transition-all duration-150 ${outgoingActionClass} ${
-                                      isActionsVisible
-                                        ? "opacity-100 pointer-events-auto"
-                                        : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
-                                    }`}
-                                    disabled={
-                                      isEditPending ||
-                                      isUnsendPending ||
-                                      isDeletePending
-                                    }
-                                  >
-                                    <MoreVertical className="h-4 w-4" />
-                                  </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent
-                                  align="end"
-                                  className="w-40"
+                        {/* Reaction badges */}
+                        {Object.keys(reactionSummary).length > 0 && (
+                          <div className={`flex flex-wrap gap-1 ${isMe ? "justify-end" : "justify-start"}`}>
+                            {Object.entries(reactionSummary).map(([emoji, data]) => {
+                              const opt = EMOTE_OPTIONS.find((o) => o.key === emoji);
+                              const isMineReaction = data.users.includes(currentUserId || "");
+                              return (
+                                <button
+                                  key={emoji}
+                                  type="button"
+                                  title={`${opt?.label || emoji}: ${data.count}`}
+                                  onClick={() => {
+                                    if (!messageId) return;
+                                    reactToMessage({ conversationId, messageId, emoji });
+                                  }}
+                                  className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs font-medium transition-all duration-150 hover:scale-110 shadow-sm border ${
+                                    isMineReaction
+                                      ? "bg-blue-100 border-blue-300 text-blue-700"
+                                      : "bg-white border-slate-200 text-slate-600"
+                                  }`}
                                 >
-                                  {canEdit && (
-                                    <DropdownMenuItem
-                                      onClick={handleEditMessage}
-                                    >
-                                      Sửa tin nhắn
-                                    </DropdownMenuItem>
-                                  )}
-                                  {canUnsend && (
-                                    <DropdownMenuItem
-                                      onClick={handleUnsendMessage}
-                                    >
-                                      Thu hồi tin nhắn
-                                    </DropdownMenuItem>
-                                  )}
-                                  {canDeleteForMe && (
-                                    <DropdownMenuItem
-                                      onClick={handleDeleteForMe}
-                                    >
-                                      Xóa phía tôi
-                                    </DropdownMenuItem>
-                                  )}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            )}
+                                  <span className="text-sm leading-none">{opt?.emoji}</span>
+                                  <span>{data.count}</span>
+                                </button>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
+
+                      {/* Emote button RIGHT side (for others' messages) */}
+                      {!isMe && !isUnsent && messageId && (
+                        <div data-reaction-scope="true" className="relative self-center shrink-0">
+                          <button
+                            type="button"
+                            title="Thả emote"
+                            onClick={() =>
+                              setReactionPickerMessageId(
+                                isReactionPickerOpen ? null : (messageId ?? null),
+                              )
+                            }
+                            className={`flex items-center justify-center w-7 h-7 rounded-full border text-base transition-all duration-150 opacity-0 group-hover/row:opacity-100 ${
+                              isReactionPickerOpen
+                                ? "!opacity-100 bg-yellow-50 border-yellow-300 text-yellow-500"
+                                : "bg-white border-slate-200 text-slate-400 hover:text-yellow-500 hover:border-yellow-300 hover:bg-yellow-50"
+                            }`}
+                          >
+                            😊
+                          </button>
+                          {isReactionPickerOpen && (
+                            <div
+                              className="absolute bottom-9 left-0 z-30 flex items-end gap-1 px-2 py-1.5 bg-white rounded-2xl shadow-xl border border-slate-100"
+                              onMouseLeave={() => setReactionPickerMessageId(null)}
+                            >
+                              {EMOTE_OPTIONS.map((opt) => (
+                                <button
+                                  key={opt.key}
+                                  type="button"
+                                  title={opt.label}
+                                  onClick={() => {
+                                    reactToMessage({ conversationId, messageId, emoji: opt.key });
+                                    setReactionPickerMessageId(null);
+                                  }}
+                                  className={`flex flex-col items-center gap-0.5 px-1 py-1 rounded-xl transition-all duration-100 hover:scale-125 ${
+                                    myReaction?.emoji === opt.key
+                                      ? "bg-blue-50 ring-2 ring-blue-300 scale-110"
+                                      : "hover:bg-slate-50"
+                                  }`}
+                                >
+                                  <span className="text-xl leading-none">{opt.emoji}</span>
+                                  <span className="text-[9px] text-slate-500 font-medium">{opt.label}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {isMe && (
                         <PresignedAvatar
                           avatarKey={senderAvatarKey}
@@ -1466,6 +1645,8 @@ export default function ChatDetailClient({
                     </div>
                   </div>
                 )}
+
+
               </>
             ) : (
               <div className="py-8 text-center text-slate-500">

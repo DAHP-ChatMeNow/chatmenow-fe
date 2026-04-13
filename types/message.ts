@@ -33,6 +33,14 @@ export interface MessageReplyPreview {
   senderDisplayName?: string;
 }
 
+export type MessageReactionEmoji = "like" | "love" | "haha" | "sad" | "angry" | "wow";
+
+export interface MessageReaction {
+  userId: string;
+  emoji: MessageReactionEmoji;
+  reactedAt?: string | Date;
+}
+
 export type MessageStatus = "sending" | "sent" | "failed";
 export type MessageSenderSource = "user" | "ai";
 
@@ -48,6 +56,7 @@ export interface Message {
   callInfo?: MessageCallInfo;
   replyToMessageId?: string;
   replyPreview?: MessageReplyPreview;
+  reactions?: MessageReaction[];
   readBy?: string[];
   isUnsent?: boolean;
   isEdited?: boolean;

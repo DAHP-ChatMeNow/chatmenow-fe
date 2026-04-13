@@ -983,3 +983,62 @@ export const useUnpinMessage = () => {
     },
   });
 };
+
+export const useReactToMessage = () => {
+  const queryClient = useQueryClient();
+  const user = useAuthStore((state) => state.user);
+  const currentUserId = user?.id || user?._id;
+
+  return useMutation({
+    mutationFn: ({
+      messageId,
+      emoji,
+    }: {
+      conversationId: string;
+      messageId: string;
+      emoji: string;
+    }) => chatService.reactToMessage(messageId, emoji),
+    onMutate: async ({ conversationId, messageId, emoji }) => {
+      await queryClient.cancelQueries({ queryKey: ["messages", conversationId] });
+      const previousMessages = queryClient.getQueryData<MessagesResponse>(["messages", conversationId]);
+
+      // Optimistic update
+      updateMessageInCache(queryClient, conversationId, messageId, (message) => {
+        const reactions = [...(message.reactions || [])];
+        const existingIndex = reactions.findIndex(
+          (r) => r.userId === currentUserId && r.emoji === emoji,
+        );
+        if (existingIndex !== -1) {
+          // Toggle off
+          reactions.splice(existingIndex, 1);
+        } else {
+          // Remove any previous reaction from this user and add new one
+          const filtered = reactions.filter((r) => r.userId !== currentUserId);
+          filtered.push({ userId: currentUserId!, emoji: emoji as any, reactedAt: new Date().toISOString() });
+          return { ...message, reactions: filtered };
+        }
+        return { ...message, reactions };
+      });
+
+      return { previousMessages, conversationId };
+    },
+    onSuccess: (updatedMessage, variables) => {
+      updateMessageInCache(
+        queryClient,
+        variables.conversationId,
+        variables.messageId,
+        (message) => ({
+          ...message,
+          reactions: updatedMessage.reactions || [],
+        }),
+      );
+    },
+    onError: (error: any, variables, context) => {
+      if (context?.previousMessages) {
+        queryClient.setQueryData(["messages", variables.conversationId], context.previousMessages);
+      }
+      toast.error(error?.response?.data?.message || "Không thể thả emote");
+    },
+  });
+};
+
