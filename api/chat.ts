@@ -71,6 +71,7 @@ export interface SendMessagePayload {
   type: string;
   attachments?: MessageAttachment[];
   replyToMessageId?: string;
+  sharedPostId?: string;
 }
 
 export interface PartnerResponse {
@@ -259,10 +260,11 @@ const mapMongoId = (obj: any): any => {
   }
 
   if (typeof obj === "object") {
-    const mapped: any = {
-      ...obj,
-      id: obj._id || obj.id,
-    };
+    const mapped: any = {};
+    Object.entries(obj).forEach(([key, value]) => {
+      mapped[key] = mapMongoId(value);
+    });
+    mapped.id = obj._id || obj.id;
     return mapped;
   }
 

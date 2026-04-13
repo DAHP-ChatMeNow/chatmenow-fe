@@ -24,6 +24,13 @@ const formatLastMessagePreview = (conversation: Conversation): string => {
     if (callStatus === "missed") return "Cuộc gọi nhỡ";
   }
 
+  if (lastMessage.type === "shared_post") {
+    if (lastMessage.content && lastMessage.content.trim()) {
+      return `Đã chia sẻ bài viết: ${lastMessage.content}`;
+    }
+    return "Đã chia sẻ một bài viết";
+  }
+
   return lastMessage.content || "Chưa có tin nhắn";
 };
 

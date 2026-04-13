@@ -31,7 +31,7 @@ import {
   useGetPrivateConversation,
   useSendMessage,
 } from "@/hooks/use-chat";
-import { formatPresenceStatus } from "@/lib/utils";
+import { formatPresenceStatus, formatPostTime } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -54,6 +54,8 @@ import { useProfilePosts } from "@/hooks/use-post";
 import { Post, PostMedia } from "@/types/post";
 import { getPostPrivacyLabel } from "@/lib/post-privacy";
 import { PostMediaLightbox } from "@/components/post/post-media-lightbox";
+import { PostShareDialog } from "@/components/post/post-share-dialog";
+import { SharedPostPreview } from "@/components/post/shared-post-preview";
 
 export default function FriendProfilePage() {
   const params = useParams();
@@ -124,6 +126,13 @@ export default function FriendProfilePage() {
       ),
     ).values(),
   );
+  const profileDetails = [
+    { label: "Quê quán", value: friend?.hometown },
+    { label: "Số điện thoại", value: friend?.phoneNumber },
+    { label: "Giới tính", value: friend?.gender },
+    { label: "Trường học", value: friend?.school },
+    { label: "Tình trạng hôn nhân", value: friend?.maritalStatus },
+  ].filter((item) => !!item.value?.trim());
 
   const handleOpenChat = () => {
     if (!friend?.id || !friend.isFriend) return;
@@ -291,6 +300,23 @@ export default function FriendProfilePage() {
                       <p className="mt-3 text-sm text-slate-600">
                         {friend.bio}
                       </p>
+                    )}
+                    {profileDetails.length > 0 && (
+                      <div className="grid gap-2 mt-3 sm:grid-cols-2">
+                        {profileDetails.map((item) => (
+                          <div
+                            key={item.label}
+                            className="px-3 py-2 text-xs rounded-lg bg-slate-100"
+                          >
+                            <p className="font-semibold text-slate-500">
+                              {item.label}
+                            </p>
+                            <p className="mt-0.5 text-sm text-slate-800">
+                              {item.value}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
 
@@ -509,6 +535,7 @@ function FriendProfilePostCard({ post }: { post: Post }) {
   const commentsCount = post.commentsCount ?? 0;
   const hasStats = likesCount > 0 || commentsCount > 0;
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
 
   return (
     <div className="overflow-hidden bg-white border rounded-2xl border-slate-200">
@@ -523,13 +550,7 @@ function FriendProfilePostCard({ post }: { post: Post }) {
             {post.author?.displayName || "Người dùng"}
           </p>
           <p className="flex items-center gap-1 text-[11px] text-slate-500">
-            {new Date(post.createdAt).toLocaleDateString("vi-VN", {
-              day: "2-digit",
-              month: "2-digit",
-              year: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
+            {formatPostTime(post.createdAt)}
             <span>•</span>
             <span className="inline-flex items-center gap-1">
               {getPostPrivacyIcon(post.privacy)}
@@ -543,6 +564,12 @@ function FriendProfilePostCard({ post }: { post: Post }) {
         <p className="px-4 pb-3 text-sm whitespace-pre-wrap text-slate-700">
           {post.content}
         </p>
+      ) : null}
+
+      {post.sharedPost ? (
+        <div className="px-4 pb-3">
+          <SharedPostPreview post={post.sharedPost} />
+        </div>
       ) : null}
 
       {post.media && post.media.length > 0 ? (
@@ -580,6 +607,23 @@ function FriendProfilePostCard({ post }: { post: Post }) {
           <span>{commentsCount} bình luận</span>
         </div>
       ) : null}
+
+      <div className="border-t border-slate-100 px-2 py-1.5">
+        <button
+          type="button"
+          onClick={() => setIsShareDialogOpen(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+        >
+          <Share2 className="h-4 w-4" />
+          Chia sẻ
+        </button>
+      </div>
+
+      <PostShareDialog
+        postId={post.id}
+        open={isShareDialogOpen}
+        onOpenChange={setIsShareDialogOpen}
+      />
     </div>
   );
 }

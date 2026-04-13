@@ -77,7 +77,7 @@ export function FriendsList({
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+    <div className="flex flex-col gap-2 md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 md:gap-3">
       {filteredFriends.map((friend) => {
         const friendId = normalizeUserId(friend);
         if (!friendId) return null;
@@ -85,77 +85,70 @@ export function FriendsList({
           isRemovingFriend && pendingRemoveId === friendId;
 
         return (
-        <div
-          key={friendId}
-          className="p-3 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all group"
-        >
-          <div className="flex items-start justify-between mb-2">
-            <PresignedAvatar
-              avatarKey={friend.avatar}
-              displayName={friend.displayName}
-              className="h-10 w-10"
-              fallbackClassName="bg-slate-100"
-            />
-            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 w-7 p-0"
-                onClick={() => handleViewProfile(friendId)}
-                title="Xem thông tin cá nhân"
-              >
-                <UserCircle2 className="w-4 h-4 text-slate-600" />
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 w-7 p-0"
-                onClick={() => handleMessageFriend(friendId)}
-                title="Nhắn tin"
-              >
-                <MessageCircle className="w-4 h-4 text-blue-600" />
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 w-7 p-0"
-                onClick={() => handleRemoveFriend(friendId)}
-                title="Xóa bạn"
-                disabled={isRemovingThisFriend}
-              >
-                {isRemovingThisFriend ? (
-                  <Loader className="w-4 h-4 animate-spin text-red-500" />
-                ) : (
-                  <UserMinus className="w-4 h-4 text-red-500" />
-                )}
-              </Button>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 min-w-0">
-            <p className="font-semibold text-sm text-slate-900 truncate">
-              {friend.displayName}
-            </p>
-            {blockedIdSet.has(friendId) && (
-              <span className="px-1.5 py-0.5 text-[10px] font-semibold text-white bg-red-500 rounded-full shrink-0">
-                Chặn
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-slate-400">
-            {formatPresenceStatus(
-              friend.isOnline,
-              friend.lastSeen,
-              friend.lastSeenText,
-            )}
-          </p>
-          <button
-            type="button"
-            onClick={() => handleViewProfile(friendId)}
-            className="mt-1 text-[11px] font-medium text-slate-500 hover:text-blue-600"
+          <div
+            key={friendId}
+            className="p-2.5 md:p-3 rounded-xl md:hover:bg-slate-50 border border-slate-100 md:border-transparent md:hover:border-slate-100 transition-all group bg-white"
           >
-            Xem thông tin cá nhân
-          </button>
-        </div>
+            <div className="flex items-start justify-between mb-1.5">
+              <PresignedAvatar
+                avatarKey={friend.avatar}
+                displayName={friend.displayName}
+                className="h-10 w-10 md:h-10 md:w-10"
+                fallbackClassName="bg-slate-100"
+              />
+              <div className="flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 w-6 p-0"
+                  onClick={() => handleViewProfile(friendId)}
+                  title="Xem thông tin cá nhân"
+                >
+                  <UserCircle2 className="w-3.5 h-3.5 text-slate-600" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 w-6 p-0"
+                  onClick={() => handleMessageFriend(friendId)}
+                  title="Nhắn tin"
+                >
+                  <MessageCircle className="w-3.5 h-3.5 text-blue-600" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 w-6 p-0"
+                  onClick={() => handleRemoveFriend(friendId)}
+                  title="Xóa bạn"
+                  disabled={isRemovingThisFriend}
+                >
+                  {isRemovingThisFriend ? (
+                    <Loader className="w-3.5 h-3.5 animate-spin text-red-500" />
+                  ) : (
+                    <UserMinus className="w-3.5 h-3.5 text-red-500" />
+                  )}
+                </Button>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 min-w-0">
+              <p className="font-semibold text-sm md:text-sm text-slate-900 truncate">
+                {friend.displayName}
+              </p>
+              {blockedIdSet.has(friendId) && (
+                <span className="px-1.5 py-0.5 text-[10px] font-semibold text-white bg-red-500 rounded-full shrink-0">
+                  Chặn
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] md:text-xs text-slate-400 leading-tight">
+              {formatPresenceStatus(
+                friend.isOnline,
+                friend.lastSeen,
+                friend.lastSeenText,
+              )}
+            </p>
+          </div>
         );
       })}
     </div>

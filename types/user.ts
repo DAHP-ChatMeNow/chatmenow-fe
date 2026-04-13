@@ -7,6 +7,11 @@ export interface User {
   email?: string;
   displayName: string;
   bio?: string;
+  hometown?: string;
+  phoneNumber?: string;
+  gender?: string;
+  school?: string;
+  maritalStatus?: string;
   phone?: string;
   avatar?: string;
   coverImage?: string;

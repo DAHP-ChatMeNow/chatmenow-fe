@@ -165,6 +165,25 @@ const toAvatarValue = (value: unknown): string | undefined => {
   return undefined;
 };
 
+const toDisplayName = (value: unknown): string | undefined => {
+  if (!value) return undefined;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed || undefined;
+  }
+
+  const obj = toObject(value);
+  const candidates = [obj.displayName, obj.name, obj.fullName, obj.username];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return undefined;
+};
+
 const normalizeSignalPayload = (
   rawPayload: unknown,
 ): Record<string, unknown> => {
@@ -266,6 +285,7 @@ const getPeerId = (
 
 const parseIncomingCall = (
   payload: Record<string, unknown>,
+  forcedCallMode?: VideoCallMode,
 ): IncomingCallData | null => {
   const roomId = getRoomId(payload);
   const callerId =
@@ -284,10 +304,18 @@ const parseIncomingCall = (
     .map((id) => toId(id))
     .filter((id): id is string => Boolean(id));
 
+  const payloadCallMode = payload.callMode;
+  const normalizedCallMode: VideoCallMode | undefined =
+    payloadCallMode === "group" || payloadCallMode === "direct"
+      ? payloadCallMode
+      : undefined;
+
+  // A direct call may still include one participant id, so we only infer
+  // group mode when there are multiple remote participants.
   const callMode: VideoCallMode =
-    payload.callMode === "group" || participantIds.length > 0
+    forcedCallMode || normalizedCallMode || (participantIds.length > 1
       ? "group"
-      : "direct";
+      : "direct");
 
   return {
     roomId,
@@ -295,8 +323,10 @@ const parseIncomingCall = (
     callMode,
     callerId,
     callerName:
-      (payload.callerName as string | undefined) ||
-      (caller.displayName as string | undefined) ||
+      toDisplayName(payload.callerName) ||
+      toDisplayName(payload.caller) ||
+      toDisplayName(payload.fromUser) ||
+      toDisplayName(payload.user) ||
       "Người dùng",
     callerAvatar: callerAvatar || "",
     receiverId: toId(payload.receiverId) || toId(payload.toUserId),
@@ -1264,9 +1294,9 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
       });
   }, [isCameraOff, syncLocalStreamFromRoom]);
 
-  const hydrateIncomingCallerAvatar = useCallback(
+  const hydrateIncomingCallerProfile = useCallback(
     async (call: IncomingCallData) => {
-      if (!call.callerId || call.callerAvatar) return;
+      if (!call.callerId) return;
 
       try {
         let caller = await userService.getUserProfile(call.callerId);
@@ -1278,23 +1308,30 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
           caller = await userService.getFriendProfile(call.callerId);
         }
 
+        const callerObj = caller as unknown as Record<string, unknown>;
         const avatarKey =
-          toAvatarValue(
-            (caller as unknown as Record<string, unknown>).avatar,
-          ) || toAvatarValue(caller as unknown as Record<string, unknown>);
+          toAvatarValue(callerObj.avatar) || toAvatarValue(callerObj);
+        const callerName = toDisplayName(callerObj);
 
-        if (!avatarKey) return;
+        if (!avatarKey && !callerName) return;
 
         setIncomingCall((prev) => {
           if (!prev || prev.roomId !== call.roomId) return prev;
-          const next = { ...prev, callerAvatar: avatarKey };
+          const next = {
+            ...prev,
+            callerAvatar: prev.callerAvatar || avatarKey || "",
+            callerName:
+              prev.callerName && prev.callerName !== "Người dùng"
+                ? prev.callerName
+                : callerName || prev.callerName || "Người dùng",
+          };
           incomingCallRef.current = next;
           return next;
         });
       } catch (error) {
         console.error(
-          "hydrateIncomingCallerAvatar error:",
-          getErrorMessage(error, "Không lấy được avatar người gọi"),
+          "hydrateIncomingCallerProfile error:",
+          getErrorMessage(error, "Không lấy được thông tin người gọi"),
         );
       }
     },
@@ -1305,9 +1342,12 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
     if (!socket.current || !isConnected) return;
     const socketInstance = socket.current;
 
-    const onIncomingCall = (rawPayload: unknown) => {
+    const handleIncomingCall = (
+      rawPayload: unknown,
+      forcedCallMode?: VideoCallMode,
+    ) => {
       const payload = normalizeSignalPayload(rawPayload);
-      const call = parseIncomingCall(payload);
+      const call = parseIncomingCall(payload, forcedCallMode);
       if (!call || call.callerId === myUserId) return;
 
       const currentIncoming = incomingCallRef.current;
@@ -1348,7 +1388,15 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
       incomingCallRef.current = call;
       setIncomingCall(call);
       setPhase("ringing");
-      void hydrateIncomingCallerAvatar(call);
+      void hydrateIncomingCallerProfile(call);
+    };
+
+    const onIncomingDirectCall = (rawPayload: unknown) => {
+      handleIncomingCall(rawPayload, "direct");
+    };
+
+    const onIncomingGroupCall = (rawPayload: unknown) => {
+      handleIncomingCall(rawPayload, "group");
     };
 
     const onCallAccepted = async (rawPayload: unknown) => {
@@ -1483,10 +1531,10 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
       });
     };
 
-    socketInstance.on("incoming-call", onIncomingCall);
-    socketInstance.on("incomingCall", onIncomingCall);
-    socketInstance.on("incoming-group-call", onIncomingCall);
-    socketInstance.on("incomingGroupCall", onIncomingCall);
+    socketInstance.on("incoming-call", onIncomingDirectCall);
+    socketInstance.on("incomingCall", onIncomingDirectCall);
+    socketInstance.on("incoming-group-call", onIncomingGroupCall);
+    socketInstance.on("incomingGroupCall", onIncomingGroupCall);
     socketInstance.on("call-accepted", onCallAccepted);
     socketInstance.on("callAccepted", onCallAccepted);
     socketInstance.on("call-rejected", onCallRejected);
@@ -1495,10 +1543,10 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
     socketInstance.on("callError", onCallError);
 
     return () => {
-      socketInstance.off("incoming-call", onIncomingCall);
-      socketInstance.off("incomingCall", onIncomingCall);
-      socketInstance.off("incoming-group-call", onIncomingCall);
-      socketInstance.off("incomingGroupCall", onIncomingCall);
+      socketInstance.off("incoming-call", onIncomingDirectCall);
+      socketInstance.off("incomingCall", onIncomingDirectCall);
+      socketInstance.off("incoming-group-call", onIncomingGroupCall);
+      socketInstance.off("incomingGroupCall", onIncomingGroupCall);
       socketInstance.off("call-accepted", onCallAccepted);
       socketInstance.off("callAccepted", onCallAccepted);
       socketInstance.off("call-rejected", onCallRejected);
@@ -1514,7 +1562,7 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
     leaveRoomAndReset,
     myUserId,
     socket,
-    hydrateIncomingCallerAvatar,
+    hydrateIncomingCallerProfile,
   ]);
 
   useEffect(() => {
@@ -1556,6 +1604,17 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
           })),
         ]
       : [];
+
+  const isGroupVideoCall =
+    activeCall?.callType === "video" && activeCall.callMode === "group";
+  const directRemoteTile =
+    activeCall?.callType === "video" && activeCall.callMode === "direct"
+      ? videoTiles.find((tile) => tile.tileId !== "local")
+      : undefined;
+  const localTile =
+    activeCall?.callType === "video"
+      ? videoTiles.find((tile) => tile.tileId === "local")
+      : undefined;
 
   const contextValue = useMemo<VideoCallContextType>(
     () => ({
@@ -1676,41 +1735,83 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
           <div className="relative h-full w-full">
             <div className="absolute inset-0 bg-slate-900 p-3 pb-28 md:p-6 md:pb-32">
               {activeCall.callType === "video" ? (
-                <div
-                  className={`grid h-full w-full gap-3 ${getVideoGridClass(
-                    videoTiles.length || 1,
-                  )}`}
-                >
-                  {videoTiles.map((tile) => (
-                    <div
-                      key={tile.tileId}
-                      className="relative min-h-0 overflow-hidden rounded-2xl border border-white/10 bg-slate-800"
-                    >
-                      {tile.hasVideo ? (
-                        <VideoElement
-                          stream={tile.stream}
-                          muted={tile.tileId === "local"}
-                          mirror={tile.mirror}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-slate-300">
-                          <div className="text-center">
-                            <p className="text-base font-semibold">{tile.name}</p>
-                            <p className="mt-1 text-xs text-slate-400">
-                              {tile.tileId === "local" && isCameraOff
-                                ? "Camera đang tắt"
-                                : "Chưa có video"}
-                            </p>
+                isGroupVideoCall ? (
+                  <div
+                    className={`grid h-full w-full gap-3 ${getVideoGridClass(
+                      videoTiles.length || 1,
+                    )}`}
+                  >
+                    {videoTiles.map((tile) => (
+                      <div
+                        key={tile.tileId}
+                        className="relative min-h-0 overflow-hidden rounded-2xl border border-white/10 bg-slate-800"
+                      >
+                        {tile.hasVideo ? (
+                          <VideoElement
+                            stream={tile.stream}
+                            muted={tile.tileId === "local"}
+                            mirror={tile.mirror}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-slate-300">
+                            <div className="text-center">
+                              <p className="text-base font-semibold">{tile.name}</p>
+                              <p className="mt-1 text-xs text-slate-400">
+                                {tile.tileId === "local" && isCameraOff
+                                  ? "Camera đang tắt"
+                                  : "Chưa có video"}
+                              </p>
+                            </div>
                           </div>
+                        )}
+                        <div className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-1 text-xs text-white">
+                          {tile.name}
                         </div>
-                      )}
-                      <div className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-1 text-xs text-white">
-                        {tile.name}
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="relative h-full w-full overflow-hidden rounded-2xl border border-white/10 bg-slate-800">
+                    {directRemoteTile?.hasVideo ? (
+                      <VideoElement
+                        stream={directRemoteTile.stream}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-slate-300">
+                        <div className="text-center">
+                          <p className="text-base font-semibold">
+                            {directRemoteTile?.name || activeCall.peerName || "Đang kết nối..."}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-400">
+                            {callStatusText}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {localTile && (
+                      <div className="absolute right-4 top-4 h-40 w-28 overflow-hidden rounded-xl border border-white/35 bg-black/45 shadow-xl md:h-48 md:w-32">
+                        {localTile.hasVideo ? (
+                          <VideoElement
+                            stream={localTile.stream}
+                            muted
+                            mirror
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center px-2 text-center text-[11px] text-slate-100">
+                            {isCameraOff ? "Camera tắt" : "Chưa có video"}
+                          </div>
+                        )}
+                        <div className="absolute left-1.5 top-1.5 rounded-full bg-black/55 px-1.5 py-0.5 text-[10px] text-white">
+                          Bạn
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
               ) : (
                 <div className="flex items-center justify-center w-full h-full text-slate-300">
                   <div className="text-center">

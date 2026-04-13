@@ -4,12 +4,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import {
+  useConfirmAccountUnlock,
   useLogin,
   useRememberedLogin,
   useRevokeRememberedAccount,
+  useSendAccountUnlockOtp,
 } from "@/hooks/use-auth";
 import { authService } from "@/api/auth";
 import { useAuthStore } from "@/store/use-auth-store";
+import { isAxiosError } from "axios";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -66,12 +69,24 @@ const generateParticles = () =>
 
 const PARTICLES = generateParticles();
 
+const isLockedAccountError = (error: unknown) => {
+  if (!isAxiosError(error)) return false;
+  const data = (error.response?.data as { code?: string; message?: string } | undefined) || {};
+  const code = (data.code || "").toUpperCase();
+  const message = (data.message || "").toLowerCase();
+  return code === "ACCOUNT_LOCKED" || message.includes("locked") || message.includes("bị khóa");
+};
+
 export default function LoginPage() {
   const { mutate: login, isPending } = useLogin();
   const { mutate: rememberedLogin, isPending: isRememberedLoginPending } =
     useRememberedLogin();
   const { mutate: revokeAccount, isPending: isRevokePending } =
     useRevokeRememberedAccount();
+  const { mutate: sendUnlockOtp, isPending: isSendingUnlockOtp } =
+    useSendAccountUnlockOtp();
+  const { mutate: confirmUnlock, isPending: isConfirmingUnlock } =
+    useConfirmAccountUnlock();
   const addRememberedAccount = useAuthStore(
     (state) => state.addRememberedAccount,
   );
@@ -85,10 +100,15 @@ export default function LoginPage() {
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileError, setTurnstileError] = useState("");
   const [loginError, setLoginError] = useState("");
-  const [turnstileResetSignal, setTurnstileResetSignal] = useState(0);
+  const [turnstileResetSignal] = useState(0);
   const [showLoginForm, setShowLoginForm] = useState(
     rememberedAccounts.length === 0,
   );
+  const [unlockEmail, setUnlockEmail] = useState("");
+  const [unlockOtp, setUnlockOtp] = useState("");
+  const [unlockOtpSent, setUnlockOtpSent] = useState(false);
+  const [showUnlockScreen, setShowUnlockScreen] = useState(false);
+  const unlockOtpInputRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   const turnstileSiteKey =
     process.env.NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY ?? "";
@@ -96,6 +116,7 @@ export default function LoginPage() {
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -167,6 +188,7 @@ export default function LoginPage() {
   const onSubmit = (data: LoginFormValues) => {
     setLoginError("");
     setTurnstileError("");
+    setShowUnlockScreen(false);
 
     if (!turnstileSiteKey) {
       setTurnstileError(
@@ -188,7 +210,99 @@ export default function LoginPage() {
       rememberAccount,
       deviceId: getDeviceId(),
       deviceName: getDeviceName(),
+    }, {
+      onError: (error) => {
+        if (!isLockedAccountError(error)) return;
+        setUnlockEmail(data.email);
+        setUnlockOtp("");
+        setUnlockOtpSent(false);
+        setShowUnlockScreen(true);
+      },
     });
+  };
+
+  const handleSendUnlockOtp = () => {
+    if (!unlockEmail.trim()) {
+      setLoginError("Vui lòng nhập email để nhận OTP mở khóa.");
+      return;
+    }
+    sendUnlockOtp(
+      { email: unlockEmail.trim() },
+      {
+        onSuccess: () => {
+          setUnlockOtpSent(true);
+        },
+      },
+    );
+  };
+
+  const handleConfirmUnlock = () => {
+    if (!unlockEmail.trim() || !unlockOtp.trim()) {
+      setLoginError("Vui lòng nhập đầy đủ email và OTP mở khóa.");
+      return;
+    }
+    confirmUnlock(
+      { email: unlockEmail.trim(), otp: unlockOtp.trim() },
+      {
+        onSuccess: () => {
+          setShowUnlockScreen(false);
+          setShowLoginForm(true);
+          setValue("email", unlockEmail.trim(), { shouldValidate: true });
+          setUnlockOtp("");
+          setUnlockOtpSent(false);
+          setLoginError("");
+          setTurnstileError("");
+        },
+      },
+    );
+  };
+
+  const handleUnlockOtpDigitChange = (index: number, value: string) => {
+    const digit = value.replace(/\D/g, "").slice(-1);
+    const current = unlockOtp.padEnd(6, " ").split("");
+    current[index] = digit || "";
+    const nextOtp = current
+      .join("")
+      .replace(/\s/g, "")
+      .slice(0, 6);
+    setUnlockOtp(nextOtp);
+
+    if (digit && index < 5) {
+      unlockOtpInputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleUnlockOtpKeyDown = (
+    index: number,
+    e: React.KeyboardEvent<HTMLInputElement>,
+  ) => {
+    if (e.key !== "Backspace") return;
+
+    if (unlockOtp[index]) {
+      const current = unlockOtp.padEnd(6, " ").split("");
+      current[index] = "";
+      setUnlockOtp(current.join("").replace(/\s/g, ""));
+      return;
+    }
+
+    if (index > 0) {
+      const prev = index - 1;
+      const current = unlockOtp.padEnd(6, " ").split("");
+      current[prev] = "";
+      setUnlockOtp(current.join("").replace(/\s/g, ""));
+      unlockOtpInputRefs.current[prev]?.focus();
+    }
+  };
+
+  const handleUnlockOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (!pasted) return;
+    setUnlockOtp(pasted);
+    const focusIndex = Math.min(pasted.length, 6) - 1;
+    if (focusIndex >= 0) {
+      unlockOtpInputRefs.current[focusIndex]?.focus();
+    }
   };
 
   if (token) {
@@ -388,6 +502,86 @@ export default function LoginPage() {
           style={{ animation: "fadeInUp 0.5s ease both" }}
         >
           <div className="transition-shadow duration-300 border shadow-xl rounded-3xl border-white/80 bg-white/90 p-7 backdrop-blur-md hover:shadow-2xl">
+            {showUnlockScreen ? (
+              <>
+                <div className="flex flex-col items-center gap-3 mb-6 text-center">
+                  <h1 className="text-2xl font-bold text-slate-900">Mở khóa tài khoản</h1>
+                  <p className="text-sm text-slate-500">
+                    Tài khoản của bạn đang tạm khóa. Nhập email và OTP để mở khóa.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <Input
+                    type="email"
+                    placeholder="Email tài khoản"
+                    value={unlockEmail}
+                    onChange={(e) => setUnlockEmail(e.target.value)}
+                    className="h-11"
+                  />
+
+                  {unlockOtpSent && (
+                    <div className="grid grid-cols-6 gap-2">
+                      {Array.from({ length: 6 }).map((_, index) => (
+                        <Input
+                          key={`unlock-otp-${index}`}
+                          ref={(el) => {
+                            unlockOtpInputRefs.current[index] = el;
+                          }}
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          maxLength={1}
+                          value={unlockOtp[index] || ""}
+                          onChange={(e) =>
+                            handleUnlockOtpDigitChange(index, e.target.value)
+                          }
+                          onKeyDown={(e) => handleUnlockOtpKeyDown(index, e)}
+                          onPaste={handleUnlockOtpPaste}
+                          className="h-11 text-center text-base font-semibold tracking-wide"
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleSendUnlockOtp}
+                      disabled={isSendingUnlockOtp}
+                      className="flex-1"
+                    >
+                      {isSendingUnlockOtp
+                        ? "Đang gửi..."
+                        : unlockOtpSent
+                          ? "Gửi lại OTP"
+                          : "Gửi OTP"}
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={handleConfirmUnlock}
+                      disabled={!unlockOtpSent || isConfirmingUnlock}
+                      className="flex-1 bg-rose-600 hover:bg-rose-700"
+                    >
+                      {isConfirmingUnlock ? "Đang xác thực..." : "Mở khóa"}
+                    </Button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowUnlockScreen(false);
+                      setUnlockOtp("");
+                      setUnlockOtpSent(false);
+                    }}
+                    className="w-full text-sm text-center text-slate-500 hover:text-slate-700"
+                  >
+                    ← Quay lại đăng nhập
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
             {/* Logo + Title */}
             <div className="flex flex-col items-center gap-3 mb-6">
               <Link href="/">
@@ -490,7 +684,6 @@ export default function LoginPage() {
                   Quên mật khẩu?
                 </Link>
               </div>
-
               {/* Turnstile */}
               <div className="flex flex-col items-center">
                 {turnstileSiteKey ? (
@@ -597,6 +790,8 @@ export default function LoginPage() {
                   ← Quay lại chọn tài khoản
                 </button>
               </div>
+            )}
+              </>
             )}
           </div>
 

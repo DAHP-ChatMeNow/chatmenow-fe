@@ -17,6 +17,9 @@ import {
   SlidersHorizontal,
   Lock,
   Check,
+  MapPin,
+  ImagePlus,
+  Palette,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PresignedAvatar } from "@/components/ui/presigned-avatar";
@@ -38,11 +41,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuthStore } from "@/store/use-auth-store";
 import {
   useUpdateProfile,
   useUpdateAvatar,
   useDeleteAvatar,
+  useUpdateCoverImage,
+  useDeleteCoverImage,
+  usePresignedUrl,
 } from "@/hooks/use-profile";
 import {
   useUserPosts,
@@ -61,9 +74,93 @@ import { BlogSkeleton } from "@/components/skeletons/blog-skeleton";
 import { useLanguage } from "@/contexts/language-context";
 import { Post, PostMedia, PostPrivacy } from "@/types/post";
 import { AiSuggestion } from "@/api/post";
-import { formatPresenceStatus } from "@/lib/utils";
+import { formatPresenceStatus, formatPostTime } from "@/lib/utils";
 import { PostMediaLightbox } from "@/components/post/post-media-lightbox";
+import { PostShareDialog } from "@/components/post/post-share-dialog";
+import { SharedPostPreview } from "@/components/post/shared-post-preview";
 import { getPostPrivacyLabel, POST_PRIVACY_OPTIONS } from "@/lib/post-privacy";
+import { toast } from "sonner";
+import {
+  DEFAULT_PROFILE_COVER_CLASS,
+  PROFILE_COVER_PRESETS,
+  getProfileCoverPreset,
+} from "@/lib/profile-cover";
+
+const VIETNAM_PROVINCES = [
+  "An Giang",
+  "Bà Rịa - Vũng Tàu",
+  "Bắc Giang",
+  "Bắc Kạn",
+  "Bạc Liêu",
+  "Bắc Ninh",
+  "Bến Tre",
+  "Bình Định",
+  "Bình Dương",
+  "Bình Phước",
+  "Bình Thuận",
+  "Cà Mau",
+  "Cần Thơ",
+  "Cao Bằng",
+  "Đà Nẵng",
+  "Đắk Lắk",
+  "Đắk Nông",
+  "Điện Biên",
+  "Đồng Nai",
+  "Đồng Tháp",
+  "Gia Lai",
+  "Hà Giang",
+  "Hà Nam",
+  "Hà Nội",
+  "Hà Tĩnh",
+  "Hải Dương",
+  "Hải Phòng",
+  "Hậu Giang",
+  "Hòa Bình",
+  "Hưng Yên",
+  "Khánh Hòa",
+  "Kiên Giang",
+  "Kon Tum",
+  "Lai Châu",
+  "Lâm Đồng",
+  "Lạng Sơn",
+  "Lào Cai",
+  "Long An",
+  "Nam Định",
+  "Nghệ An",
+  "Ninh Bình",
+  "Ninh Thuận",
+  "Phú Thọ",
+  "Phú Yên",
+  "Quảng Bình",
+  "Quảng Nam",
+  "Quảng Ngãi",
+  "Quảng Ninh",
+  "Quảng Trị",
+  "Sóc Trăng",
+  "Sơn La",
+  "Tây Ninh",
+  "Thái Bình",
+  "Thái Nguyên",
+  "Thanh Hóa",
+  "Thừa Thiên Huế",
+  "Tiền Giang",
+  "Hồ Chí Minh",
+  "Trà Vinh",
+  "Tuyên Quang",
+  "Vĩnh Long",
+  "Vĩnh Phúc",
+  "Yên Bái",
+];
+
+const GENDER_OPTIONS = ["Nam", "Nữ", "Khác"];
+const MARITAL_STATUS_OPTIONS = ["Độc thân", "Hẹn hò", "Tìm hiểu", "Đã kết hôn"];
+
+const extractProvinceName = (value: string) =>
+  value
+    .replace(/^thành phố\s+/i, "")
+    .replace(/^tp\.?\s*/i, "")
+    .replace(/^tỉnh\s+/i, "")
+    .trim();
 
 const getPostPrivacyIcon = (privacy?: string, className = "w-3.5 h-3.5") => {
   switch (privacy) {
@@ -84,11 +181,19 @@ export default function ProfilePage() {
   const { t, language } = useLanguage();
 
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showCoverPresetDialog, setShowCoverPresetDialog] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [displayName, setDisplayName] = useState(user?.displayName || "");
   const [bio, setBio] = useState(user?.bio || "");
+  const [hometown, setHometown] = useState(user?.hometown || "");
+  const [phoneNumber, setPhoneNumber] = useState(user?.phoneNumber || "");
+  const [gender, setGender] = useState(user?.gender || "");
+  const [school, setSchool] = useState(user?.school || "");
+  const [maritalStatus, setMaritalStatus] = useState(user?.maritalStatus || "");
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [previewAvatar, setPreviewAvatar] = useState<string | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   const currentUserId = user?.id || user?._id;
 
@@ -97,6 +202,10 @@ export default function ProfilePage() {
     useUpdateAvatar();
   const { mutate: deleteAvatar, isPending: isDeletingAvatar } =
     useDeleteAvatar();
+  const { mutate: updateCoverImage, isPending: isUploadingCover } =
+    useUpdateCoverImage();
+  const { mutate: deleteCoverImage, isPending: isDeletingCover } =
+    useDeleteCoverImage();
   const { mutate: likePost } = useLikePost();
   const { mutate: updatePostPrivacy, isPending: isUpdatingPostPrivacy } =
     useUpdatePostPrivacy();
@@ -157,6 +266,10 @@ export default function ProfilePage() {
     setShowDeleteConfirm(true);
   };
 
+  const handleCoverUploadClick = () => {
+    coverInputRef.current?.click();
+  };
+
   const confirmDeleteAvatar = () => {
     deleteAvatar(undefined, {
       onSettled: () => {
@@ -165,11 +278,94 @@ export default function ProfilePage() {
     });
   };
 
+  const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    updateCoverImage(file);
+    e.target.value = "";
+  };
+
+  const handleDeleteCoverImage = () => {
+    deleteCoverImage();
+  };
+
+  const handleSelectCoverPreset = (presetId: string) => {
+    updateProfile({ themeColor: presetId });
+    setShowCoverPresetDialog(false);
+  };
+
   const handleSaveProfile = () => {
     updateProfile(
-      { displayName, bio },
+      {
+        displayName: displayName.trim(),
+        bio: bio.trim(),
+        hometown: hometown.trim(),
+        phoneNumber: phoneNumber.trim(),
+        gender: gender.trim(),
+        school: school.trim(),
+        maritalStatus: maritalStatus.trim(),
+      },
       { onSuccess: () => setShowEditDialog(false) },
     );
+  };
+
+  const handleUseCurrentLocation = async () => {
+    if (!navigator?.geolocation) {
+      toast.error("Thiết bị không hỗ trợ định vị");
+      return;
+    }
+
+    setIsDetectingLocation(true);
+    try {
+      const position = await new Promise<GeolocationPosition>(
+        (resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+          });
+        },
+      );
+
+      const { latitude, longitude } = position.coords;
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&accept-language=vi`,
+      );
+      if (!response.ok) {
+        throw new Error("Không thể lấy dữ liệu vị trí");
+      }
+
+      const locationData = await response.json();
+      const address = locationData?.address || {};
+      const locationCandidates = [
+        address.state,
+        address.province,
+        address.city,
+        address.region,
+        address.county,
+        address.state_district,
+      ].filter(Boolean);
+
+      if (locationCandidates.length === 0) {
+        toast.error("Không xác định được tỉnh/thành");
+        return;
+      }
+
+      const resolvedHometown = extractProvinceName(locationCandidates[0]);
+      setHometown(resolvedHometown);
+      toast.success("Đã cập nhật quê quán theo vị trí hiện tại");
+    } catch (error: unknown) {
+      const geoError = error as GeolocationPositionError | undefined;
+      if (geoError?.code === 1) {
+        toast.error("Bạn chưa cấp quyền truy cập vị trí");
+      } else if (geoError?.code === 3) {
+        toast.error("Hết thời gian lấy vị trí, vui lòng thử lại");
+      } else {
+        toast.error("Không thể lấy vị trí hiện tại");
+      }
+    } finally {
+      setIsDetectingLocation(false);
+    }
   };
 
   const handleLike = (postId: string, isLiked: boolean) => {
@@ -283,7 +479,36 @@ export default function ProfilePage() {
     await sendAiPopupMessage(postId, content);
   };
 
+  const coverImageValue = user?.coverImage || "";
+  const selectedCoverPreset = getProfileCoverPreset(user?.themeColor);
+  const isDirectCoverImage =
+    !!coverImageValue &&
+    (coverImageValue.startsWith("http://") ||
+      coverImageValue.startsWith("https://") ||
+      coverImageValue.startsWith("data:") ||
+      coverImageValue.startsWith("blob:") ||
+      coverImageValue.startsWith("/"));
+  const { data: coverPresignedData } = usePresignedUrl(
+    coverImageValue,
+    !!coverImageValue && !isDirectCoverImage,
+  );
+  const resolvedCoverImage = isDirectCoverImage
+    ? coverImageValue
+    : (coverPresignedData?.viewUrl ?? "");
+  const coverClassName =
+    selectedCoverPreset?.className || DEFAULT_PROFILE_COVER_CLASS;
+  const showCoverImage = !selectedCoverPreset && !!resolvedCoverImage;
+  const isCoverBusy = isUploadingCover || isDeletingCover;
+
   if (!user) return null;
+
+  const profileDetails = [
+    { label: "Quê quán", value: user.hometown },
+    { label: "Số điện thoại", value: user.phoneNumber },
+    { label: "Giới tính", value: user.gender },
+    { label: "Trường học", value: user.school },
+    { label: "Tình trạng hôn nhân", value: user.maritalStatus },
+  ].filter((item) => !!item.value?.trim());
 
   return (
     <div className="flex flex-col w-full h-full bg-slate-50/50 dark:bg-slate-900">
@@ -292,7 +517,85 @@ export default function ProfilePage() {
           {/* === FB-style Profile Header Card === */}
           <div className="overflow-hidden bg-white border-0 rounded-none shadow-sm dark:bg-slate-800 md:rounded-2xl md:border border-slate-100 dark:border-slate-700">
             {/* Cover Photo */}
-            <div className="relative h-36 md:h-48 bg-gradient-to-br from-blue-400 via-blue-500 to-purple-600" />
+            <div className="relative h-56 overflow-hidden md:h-66">
+              {showCoverImage ? (
+                <img
+                  src={resolvedCoverImage}
+                  alt="Ảnh bìa"
+                  className="object-cover w-full h-full"
+                />
+              ) : (
+                <div className={`h-full w-full ${coverClassName}`} />
+              )}
+
+              <div className="absolute inset-0 bg-black/10" />
+
+              <div className="absolute right-3 top-3">
+                {isCoverBusy ? (
+                  <div className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium text-white rounded-lg bg-black/50">
+                    <Loader className="h-3.5 w-3.5 animate-spin" />
+                    <span>
+                      {isDeletingCover ? "Đang xóa..." : "Đang tải..."}
+                    </span>
+                  </div>
+                ) : (
+                  <DropdownMenu modal={false}>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium transition rounded-lg shadow-sm bg-white/95 text-slate-800 hover:bg-white"
+                        aria-label="Chỉnh sửa ảnh bìa"
+                        type="button"
+                      >
+                        <Camera className="w-4 h-4" />
+                        <span className="hidden sm:inline">
+                          Chỉnh sửa ảnh bìa
+                        </span>
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      className="z-[90] w-56 border-slate-200 bg-white text-slate-900 shadow-xl backdrop-blur-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    >
+                      <DropdownMenuItem
+                        onClick={handleCoverUploadClick}
+                        className="gap-3 cursor-pointer focus:bg-slate-100 dark:focus:bg-slate-700"
+                      >
+                        <ImagePlus className="w-4 h-4 text-blue-600" />
+                        <span>Tải ảnh bìa lên</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => setShowCoverPresetDialog(true)}
+                        className="gap-3 cursor-pointer focus:bg-slate-100 dark:focus:bg-slate-700"
+                      >
+                        <Palette className="w-4 h-4 text-violet-600" />
+                        <span>Chọn nền màu</span>
+                      </DropdownMenuItem>
+                      {user.coverImage && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={handleDeleteCoverImage}
+                            className="gap-3 text-red-600 cursor-pointer focus:bg-red-50 focus:text-red-600"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            <span>Xóa ảnh bìa</span>
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+
+              <input
+                ref={coverInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleCoverChange}
+                className="hidden"
+                disabled={isCoverBusy}
+              />
+            </div>
 
             {/* Avatar + Info */}
             <div className="px-4 pb-4 md:px-6">
@@ -383,6 +686,23 @@ export default function ProfilePage() {
                 <p className="max-w-lg mt-1 text-sm text-slate-500 dark:text-slate-400">
                   {user.bio}
                 </p>
+              )}
+              {profileDetails.length > 0 && (
+                <div className="grid gap-2 mt-3 sm:grid-cols-2">
+                  {profileDetails.map((item) => (
+                    <div
+                      key={item.label}
+                      className="px-3 py-2 text-xs rounded-lg bg-slate-100 dark:bg-slate-700/60"
+                    >
+                      <p className="font-semibold text-slate-500 dark:text-slate-300">
+                        {item.label}
+                      </p>
+                      <p className="mt-0.5 text-sm text-slate-800 dark:text-slate-100">
+                        {item.value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               )}
               <p className="mt-1 text-xs text-slate-400">
                 @{user.id?.slice(0, 8)}
@@ -479,9 +799,49 @@ export default function ProfilePage() {
         </div>
       </ScrollArea>
 
+      <Dialog
+        open={showCoverPresetDialog}
+        onOpenChange={setShowCoverPresetDialog}
+      >
+        <DialogContent className="max-w-lg bg-white dark:bg-slate-800">
+          <DialogHeader>
+            <DialogTitle className="dark:text-white">
+              Chọn nền ảnh bìa
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {PROFILE_COVER_PRESETS.map((preset) => {
+              const isSelected = user.themeColor === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => handleSelectCoverPreset(preset.id)}
+                  className={`group relative h-24 overflow-hidden rounded-xl border transition ${
+                    isSelected
+                      ? "border-blue-500 ring-2 ring-blue-200"
+                      : "border-slate-200 hover:border-slate-300"
+                  }`}
+                >
+                  <div className={`h-full w-full ${preset.className}`} />
+                  <div className="absolute inset-x-0 bottom-0 px-2 py-1 text-xs font-medium text-center text-white bg-black/35">
+                    {preset.name}
+                  </div>
+                  {isSelected && (
+                    <span className="absolute inline-flex items-center justify-center w-5 h-5 text-white bg-blue-600 rounded-full right-2 top-2">
+                      <Check className="h-3.5 w-3.5" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Edit Profile Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="max-w-md bg-white dark:bg-slate-800">
+        <DialogContent className="max-w-xl bg-white dark:bg-slate-800">
           <DialogHeader>
             <DialogTitle className="dark:text-white">
               {t.editProfile}
@@ -522,6 +882,190 @@ export default function ProfilePage() {
                 className="min-h-[100px] dark:bg-slate-700 dark:text-white dark:border-slate-600"
               />
               <p className="text-xs text-slate-400">{bio.length}/160</p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-sm font-medium text-slate-900 dark:text-slate-200">
+                  Quê quán
+                </label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleUseCurrentLocation}
+                  disabled={isUpdating || isDetectingLocation}
+                  className="h-8 px-2 text-xs"
+                >
+                  {isDetectingLocation ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                  ) : (
+                    <MapPin className="w-3.5 h-3.5 mr-1" />
+                  )}
+                  Vị trí hiện tại
+                </Button>
+              </div>
+              <Select
+                value={hometown || undefined}
+                onValueChange={setHometown}
+                disabled={isUpdating || isDetectingLocation}
+              >
+                <SelectTrigger className="dark:bg-slate-700 dark:text-white dark:border-slate-600">
+                  <SelectValue placeholder="Chọn tỉnh/thành" />
+                </SelectTrigger>
+                <SelectContent className="z-[80] max-h-72 border-slate-200 bg-white text-slate-900 shadow-xl dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                  {hometown && !VIETNAM_PROVINCES.includes(hometown) && (
+                    <SelectItem
+                      value={hometown}
+                      className="text-slate-800 focus:bg-slate-100 focus:text-slate-900 dark:text-slate-100 dark:focus:bg-slate-700 dark:focus:text-slate-100"
+                    >
+                      {hometown}
+                    </SelectItem>
+                  )}
+                  {VIETNAM_PROVINCES.map((province) => (
+                    <SelectItem
+                      key={province}
+                      value={province}
+                      className="text-slate-800 focus:bg-slate-100 focus:text-slate-900 dark:text-slate-100 dark:focus:bg-slate-700 dark:focus:text-slate-100"
+                    >
+                      {province}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {hometown && (
+                <button
+                  type="button"
+                  className="text-xs text-blue-600 hover:text-blue-700"
+                  onClick={() => setHometown("")}
+                  disabled={isUpdating || isDetectingLocation}
+                >
+                  Xóa lựa chọn
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-900 dark:text-slate-200">
+                Số điện thoại
+              </label>
+              <Input
+                placeholder={
+                  language === "vi"
+                    ? "Nhập số điện thoại công khai"
+                    : "Enter public phone number"
+                }
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                disabled={isUpdating}
+                className="dark:bg-slate-700 dark:text-white dark:border-slate-600"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-900 dark:text-slate-200">
+                Giới tính
+              </label>
+              <Select
+                value={gender || undefined}
+                onValueChange={setGender}
+                disabled={isUpdating}
+              >
+                <SelectTrigger className="dark:bg-slate-700 dark:text-white dark:border-slate-600">
+                  <SelectValue placeholder="Chọn giới tính" />
+                </SelectTrigger>
+                <SelectContent className="z-[80] border-slate-200 bg-white text-slate-900 shadow-xl dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                  {gender && !GENDER_OPTIONS.includes(gender) && (
+                    <SelectItem
+                      value={gender}
+                      className="text-slate-800 focus:bg-slate-100 focus:text-slate-900 dark:text-slate-100 dark:focus:bg-slate-700 dark:focus:text-slate-100"
+                    >
+                      {gender}
+                    </SelectItem>
+                  )}
+                  {GENDER_OPTIONS.map((option) => (
+                    <SelectItem
+                      key={option}
+                      value={option}
+                      className="text-slate-800 focus:bg-slate-100 focus:text-slate-900 dark:text-slate-100 dark:focus:bg-slate-700 dark:focus:text-slate-100"
+                    >
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {gender && (
+                <button
+                  type="button"
+                  className="text-xs text-blue-600 hover:text-blue-700"
+                  onClick={() => setGender("")}
+                  disabled={isUpdating}
+                >
+                  Xóa lựa chọn
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-900 dark:text-slate-200">
+                Trường học / Học vấn
+              </label>
+              <Input
+                placeholder={
+                  language === "vi"
+                    ? "Nhập trường học"
+                    : "Enter school/education"
+                }
+                value={school}
+                onChange={(e) => setSchool(e.target.value)}
+                disabled={isUpdating}
+                className="dark:bg-slate-700 dark:text-white dark:border-slate-600"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-900 dark:text-slate-200">
+                Tình trạng hôn nhân
+              </label>
+              <Select
+                value={maritalStatus || undefined}
+                onValueChange={setMaritalStatus}
+                disabled={isUpdating}
+              >
+                <SelectTrigger className="dark:bg-slate-700 dark:text-white dark:border-slate-600">
+                  <SelectValue placeholder="Chọn tình trạng hôn nhân" />
+                </SelectTrigger>
+                <SelectContent className="z-[80] border-slate-200 bg-white text-slate-900 shadow-xl dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                  {maritalStatus &&
+                    !MARITAL_STATUS_OPTIONS.includes(maritalStatus) && (
+                      <SelectItem
+                        value={maritalStatus}
+                        className="text-slate-800 focus:bg-slate-100 focus:text-slate-900 dark:text-slate-100 dark:focus:bg-slate-700 dark:focus:text-slate-100"
+                      >
+                        {maritalStatus}
+                      </SelectItem>
+                    )}
+                  {MARITAL_STATUS_OPTIONS.map((option) => (
+                    <SelectItem
+                      key={option}
+                      value={option}
+                      className="text-slate-800 focus:bg-slate-100 focus:text-slate-900 dark:text-slate-100 dark:focus:bg-slate-700 dark:focus:text-slate-100"
+                    >
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {maritalStatus && (
+                <button
+                  type="button"
+                  className="text-xs text-blue-600 hover:text-blue-700"
+                  onClick={() => setMaritalStatus("")}
+                  disabled={isUpdating}
+                >
+                  Xóa lựa chọn
+                </button>
+              )}
             </div>
 
             {/* Action Buttons */}
@@ -667,10 +1211,10 @@ function PostMediaGrid({
             muted
             playsInline
             preload="metadata"
-            className="w-full h-full object-cover pointer-events-none"
+            className="object-cover w-full h-full pointer-events-none"
           />
           <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/45 text-white text-sm">
+            <span className="inline-flex items-center justify-center w-10 h-10 text-sm text-white rounded-full bg-black/45">
               ▶
             </span>
           </span>
@@ -805,6 +1349,7 @@ function ProfilePostCard({
   const comments = commentsData?.comments || [];
   const aiSuggestion = commentsData?.aiSuggestion || fallbackSuggestion;
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const likesCount = post.likesCount ?? 0;
   const commentsCount = post.commentsCount ?? 0;
   const hasStats = likesCount > 0 || commentsCount > 0;
@@ -828,13 +1373,7 @@ function ProfilePostCard({
               {post.author?.displayName || "User"}
             </p>
             <p className="flex items-center gap-1 text-[11px] text-slate-400">
-              {new Date(post.createdAt).toLocaleDateString("vi-VN", {
-                day: "2-digit",
-                month: "2-digit",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
+              {formatPostTime(post.createdAt)}
               <span>•</span>
               <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
                 {getPostPrivacyIcon(post.privacy, "h-3 w-3")}
@@ -852,7 +1391,7 @@ function ProfilePostCard({
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              className="w-64 rounded-xl border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-800"
+              className="w-64 p-2 bg-white rounded-xl border-slate-200 dark:border-slate-700 dark:bg-slate-800"
             >
               <DropdownMenuLabel className="text-xs uppercase text-slate-500 dark:text-slate-400">
                 Quyền riêng tư
@@ -862,7 +1401,7 @@ function ProfilePostCard({
                 return (
                   <DropdownMenuItem
                     key={option.value}
-                    className="flex items-start gap-2 rounded-lg py-2"
+                    className="flex items-start gap-2 py-2 rounded-lg"
                     disabled={isCurrent || isMutatingPost}
                     onClick={() =>
                       onUpdatePrivacy(
@@ -876,7 +1415,7 @@ function ProfilePostCard({
                     <span className="mt-0.5 text-slate-500 dark:text-slate-300">
                       {getPostPrivacyIcon(option.value, "h-4 w-4")}
                     </span>
-                    <span className="min-w-0 flex-1">
+                    <span className="flex-1 min-w-0">
                       <span className="block text-sm font-medium text-slate-800 dark:text-slate-100">
                         {option.label}
                       </span>
@@ -884,17 +1423,19 @@ function ProfilePostCard({
                         {option.description}
                       </span>
                     </span>
-                    {isCurrent ? <Check className="h-4 w-4 text-blue-600" /> : null}
+                    {isCurrent ? (
+                      <Check className="w-4 h-4 text-blue-600" />
+                    ) : null}
                   </DropdownMenuItem>
                 );
               })}
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                className="rounded-lg text-red-600 focus:bg-red-50 focus:text-red-600 dark:focus:bg-red-900/30"
+                className="text-red-600 rounded-lg focus:bg-red-50 focus:text-red-600 dark:focus:bg-red-900/30"
                 disabled={isMutatingPost}
                 onClick={onDelete}
               >
-                <Trash2 className="h-4 w-4" />
+                <Trash2 className="w-4 h-4" />
                 Xóa bài viết
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -912,6 +1453,12 @@ function ProfilePostCard({
           {post.content}
         </p>
       )}
+
+      {post.sharedPost ? (
+        <div className="px-4 pb-3">
+          <SharedPostPreview post={post.sharedPost} />
+        </div>
+      ) : null}
 
       {/* Media */}
       {post.media && post.media.length > 0 && (
@@ -981,11 +1528,20 @@ function ProfilePostCard({
           <MessageCircle className="w-4 h-4" />
           Bình luận
         </button>
-        <button className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors rounded-none">
+        <button
+          onClick={() => setIsShareDialogOpen(true)}
+          className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors rounded-none"
+        >
           <Share2 className="w-4 h-4" />
           Chia sẻ
         </button>
       </div>
+
+      <PostShareDialog
+        postId={post.id}
+        open={isShareDialogOpen}
+        onOpenChange={setIsShareDialogOpen}
+      />
 
       {/* Comments section */}
       {isExpanded && (
@@ -1010,7 +1566,7 @@ function ProfilePostCard({
           ))}
 
           {aiSuggestion && (
-            <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 dark:border-blue-800 dark:bg-blue-900/20">
+            <div className="px-3 py-2 border border-blue-200 rounded-xl bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20">
               <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">
                 Gợi ý AI
               </p>
@@ -1018,7 +1574,7 @@ function ProfilePostCard({
                 {aiSuggestion.text}
               </p>
               {aiSuggestion.options.length > 0 ? (
-                <div className="mt-2 flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 mt-2">
                   {aiSuggestion.options.map((option) => (
                     <button
                       key={option}

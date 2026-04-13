@@ -54,6 +54,8 @@ export interface Message {
   type: string;
   attachments?: MessageAttachment[];
   callInfo?: MessageCallInfo;
+  sharedPostId?: string;
+  sharedPost?: import("./post").SharedPostReference | null;
   replyToMessageId?: string;
   replyPreview?: MessageReplyPreview;
   reactions?: MessageReaction[];

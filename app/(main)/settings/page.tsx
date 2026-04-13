@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Bell,
   ShieldCheck,
@@ -34,6 +34,13 @@ import { useAuthStore } from "@/store/use-auth-store";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/contexts/language-context";
 import { useBlockedUsers, useUnblockUser } from "@/hooks/use-contact";
+import {
+  useConfirmAccountLock,
+  useSendAccountLockOtp,
+  useVerifyAccountLockOtp,
+} from "@/hooks/use-auth";
+import { userService } from "@/api/user";
+import { isAxiosError } from "axios";
 import { toast } from "sonner";
 
 // ─── Mock activity data (until API is ready) ───────────────────────────────
@@ -89,13 +96,31 @@ export default function SettingsPage() {
   const { data: blockedUsersData, isLoading: isLoadingBlockedUsers } =
     useBlockedUsers();
   const unblockUserMutation = useUnblockUser();
+  const { mutate: sendLockOtp, isPending: isSendingLockOtp } =
+    useSendAccountLockOtp();
+  const { mutate: verifyLockOtp, isPending: isVerifyingLockOtp } =
+    useVerifyAccountLockOtp();
+  const { mutate: confirmAccountLock, isPending: isConfirmingLock } =
+    useConfirmAccountLock();
 
   const [showLanguageDialog, setShowLanguageDialog] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showPhoneDialog, setShowPhoneDialog] = useState(false);
   const [showActivity, setShowActivity] = useState(false);
   const [showBlockedDialog, setShowBlockedDialog] = useState(false);
+  const [showLockDialog, setShowLockDialog] = useState(false);
   const [activityTab, setActivityTab] = useState<"viewed" | "liked">("viewed");
+  const [lockStep, setLockStep] = useState<1 | 2 | 3>(1);
+  const [lockOtp, setLockOtp] = useState("");
+  const [lockOtpSent, setLockOtpSent] = useState(false);
+  const [lockReason, setLockReason] = useState<
+    "temporary_leave" | "security_concern" | "privacy_break" | "other"
+  >("temporary_leave");
+  const [lockOtherReason, setLockOtherReason] = useState("");
+  const [lockVerificationToken, setLockVerificationToken] = useState("");
+  const [lockVerificationExpiresAt, setLockVerificationExpiresAt] = useState<
+    string | null
+  >(null);
 
   const [currentPw, setCurrentPw] = useState("");
   const [newPw, setNewPw] = useState("");
@@ -105,6 +130,31 @@ export default function SettingsPage() {
   const [phone, setPhone] = useState(user?.phone || "");
   const [isSavingPhone, setIsSavingPhone] = useState(false);
   const blockedUsers = blockedUsersData?.blockedUsers || [];
+  const lockOtpInputRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const [resolvedEmail, setResolvedEmail] = useState(user?.email || "");
+  const effectiveEmail = user?.email || resolvedEmail;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (user?.email) return;
+
+    void userService
+      .getUserEmail()
+      .then((data) => {
+        if (cancelled) return;
+        if (data?.email) {
+          setResolvedEmail(data.email);
+        }
+      })
+      .catch(() => {
+        // Keep fallback when email API is unavailable.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.email]);
 
   const handleLogout = () => {
     logout();
@@ -146,6 +196,158 @@ export default function SettingsPage() {
     setShowPhoneDialog(false);
   };
 
+  const handleSendLockOtp = () => {
+    sendLockOtp(undefined, {
+      onSuccess: () => {
+        setLockOtpSent(true);
+      },
+    });
+  };
+
+  const handleVerifyOtpStep = () => {
+    if (!lockOtpSent) {
+      toast.error("Vui lòng gửi OTP trước");
+      return;
+    }
+    if (!lockOtp.trim()) {
+      toast.error("Vui lòng nhập mã OTP");
+      return;
+    }
+    if (lockOtp.trim().length < 6) {
+      toast.error("Mã OTP không hợp lệ");
+      return;
+    }
+    verifyLockOtp(
+      { otp: lockOtp.trim() },
+      {
+        onSuccess: (data) => {
+          setLockVerificationToken(data.lockVerificationToken);
+          setLockVerificationExpiresAt(data.expiresAt || null);
+          setLockStep(2);
+        },
+      },
+    );
+  };
+
+  const handleLockOtpDigitChange = (index: number, value: string) => {
+    const digit = value.replace(/\D/g, "").slice(-1);
+    const current = lockOtp.padEnd(6, " ").split("");
+    current[index] = digit || "";
+    const nextOtp = current
+      .join("")
+      .replace(/\s/g, "")
+      .slice(0, 6);
+    setLockOtp(nextOtp);
+
+    if (digit && index < 5) {
+      lockOtpInputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleLockOtpKeyDown = (
+    index: number,
+    e: React.KeyboardEvent<HTMLInputElement>,
+  ) => {
+    if (e.key === "Backspace") {
+      if (lockOtp[index]) {
+        const current = lockOtp.padEnd(6, " ").split("");
+        current[index] = "";
+        setLockOtp(current.join("").replace(/\s/g, ""));
+        return;
+      }
+
+      if (index > 0) {
+        const prev = index - 1;
+        const current = lockOtp.padEnd(6, " ").split("");
+        current[prev] = "";
+        setLockOtp(current.join("").replace(/\s/g, ""));
+        lockOtpInputRefs.current[prev]?.focus();
+      }
+    }
+  };
+
+  const handleLockOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (!pasted) return;
+    setLockOtp(pasted);
+    const focusIndex = Math.min(pasted.length, 6) - 1;
+    if (focusIndex >= 0) {
+      lockOtpInputRefs.current[focusIndex]?.focus();
+    }
+  };
+
+  const handleConfirmLock = () => {
+    if (!lockVerificationToken) {
+      toast.error("Phiên xác minh đã hết hạn. Vui lòng xác minh OTP lại.");
+      setLockStep(1);
+      return;
+    }
+    if (lockReason === "other" && !lockOtherReason.trim()) {
+      toast.error("Vui lòng nhập lý do tạm khóa");
+      return;
+    }
+
+    if (
+      lockVerificationExpiresAt &&
+      Date.now() >= new Date(lockVerificationExpiresAt).getTime()
+    ) {
+      toast.error("Phiên xác minh OTP đã hết hạn. Vui lòng gửi lại OTP.");
+      setLockVerificationToken("");
+      setLockVerificationExpiresAt(null);
+      setLockOtp("");
+      setLockOtpSent(false);
+      setLockStep(1);
+      return;
+    }
+
+    confirmAccountLock(
+      {
+        lockVerificationToken,
+        reason: lockReason,
+        otherReason: lockReason === "other" ? lockOtherReason.trim() : undefined,
+      },
+      {
+        onError: (error) => {
+          if (!isAxiosError(error)) return;
+          const message =
+            ((error.response?.data as { message?: string } | undefined)?.message || "")
+              .toLowerCase();
+          if (
+            message.includes("expired") ||
+            message.includes("hết hạn") ||
+            message.includes("verification token") ||
+            message.includes("lockverificationtoken")
+          ) {
+            setLockVerificationToken("");
+            setLockVerificationExpiresAt(null);
+            setLockOtp("");
+            setLockOtpSent(false);
+            setLockStep(1);
+          }
+        },
+      },
+    );
+  };
+
+  const handleContinueFromReason = () => {
+    if (lockReason === "other" && !lockOtherReason.trim()) {
+      toast.error("Vui lòng nhập lý do tạm khóa");
+      return;
+    }
+    setLockStep(3);
+  };
+
+  const resetLockDialog = () => {
+    setLockStep(1);
+    setLockOtp("");
+    setLockOtpSent(false);
+    setLockReason("temporary_leave");
+    setLockOtherReason("");
+    setLockVerificationToken("");
+    setLockVerificationExpiresAt(null);
+  };
+
   const newPwStrength =
     newPw.length === 0
       ? null
@@ -173,7 +375,7 @@ export default function SettingsPage() {
                   {user?.displayName || "—"}
                 </p>
                 <p className="text-xs text-slate-400 truncate mt-0.5">
-                  {user?.email}
+                  {effectiveEmail || "Chưa có email"}
                 </p>
               </div>
               <Badge className="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-0 text-[11px] shrink-0">
@@ -185,7 +387,7 @@ export default function SettingsPage() {
               iconBg="bg-orange-50 dark:bg-orange-900/20"
               iconColor="text-orange-500"
               label="Email"
-              description={user?.email || "Chưa có email"}
+              description={effectiveEmail || "Chưa có email"}
             />
             <SettingItem
               icon={Phone}
@@ -202,6 +404,14 @@ export default function SettingsPage() {
               label="Đổi mật khẩu"
               description="Cập nhật mật khẩu bảo mật tài khoản"
               onClick={() => setShowChangePassword(true)}
+            />
+            <SettingItem
+              icon={ShieldBan}
+              iconBg="bg-rose-50 dark:bg-rose-900/20"
+              iconColor="text-rose-500"
+              label="Tạm khóa tài khoản"
+              description="Tạm khóa bằng OTP email và có thể tự mở lại"
+              onClick={() => setShowLockDialog(true)}
             />
           </Section>
 
@@ -468,6 +678,211 @@ export default function SettingsPage() {
               )}
               {isSavingPhone ? "Đang lưu..." : "Lưu số điện thoại"}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Account lock */}
+      <Dialog
+        open={showLockDialog}
+        onOpenChange={(open) => {
+          setShowLockDialog(open);
+          if (!open) resetLockDialog();
+        }}
+      >
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-md bg-white dark:bg-slate-800 rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 dark:text-white">
+              <ShieldBan className="w-5 h-5 text-rose-500" />
+              {lockStep === 1
+                ? "Xác minh"
+                : lockStep === 2
+                  ? "Lý do"
+                  : "Xác nhận"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {lockStep === 1 && (
+              <div className="space-y-3">
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Xác minh danh tính bằng OTP gửi đến email{" "}
+                  <b>{effectiveEmail || "của bạn"}</b>.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleSendLockOtp}
+                  disabled={isSendingLockOtp}
+                  className="w-full"
+                >
+                  {isSendingLockOtp && (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  )}
+                  {lockOtpSent ? "Gửi lại OTP" : "Gửi OTP"}
+                </Button>
+
+                {lockOtpSent && (
+                  <>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold tracking-wide uppercase text-slate-500">
+                        Mã OTP
+                      </label>
+                      <div className="grid grid-cols-6 gap-2">
+                        {Array.from({ length: 6 }).map((_, index) => (
+                          <Input
+                            key={`lock-otp-step1-${index}`}
+                            ref={(el) => {
+                              lockOtpInputRefs.current[index] = el;
+                            }}
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            maxLength={1}
+                            value={lockOtp[index] || ""}
+                            onChange={(e) =>
+                              handleLockOtpDigitChange(index, e.target.value)
+                            }
+                            onKeyDown={(e) => handleLockOtpKeyDown(index, e)}
+                            onPaste={handleLockOtpPaste}
+                            className="h-11 text-center text-base font-semibold tracking-wide dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={handleVerifyOtpStep}
+                      disabled={isVerifyingLockOtp}
+                      className="w-full bg-rose-600 hover:bg-rose-700"
+                    >
+                      {isVerifyingLockOtp ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Đang xác minh...
+                        </>
+                      ) : (
+                        "Xác minh OTP"
+                      )}
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {lockStep === 2 && (
+              <div className="space-y-3">
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Chọn lý do tạm khóa tài khoản.
+                </p>
+                <div className="grid grid-cols-1 gap-2">
+                  {[
+                    { value: "temporary_leave", label: "Tạm thời không sử dụng" },
+                    { value: "security_concern", label: "Lo ngại bảo mật" },
+                    { value: "privacy_break", label: "Muốn tạm ẩn riêng tư" },
+                    { value: "other", label: "Lý do khác" },
+                  ].map((item) => (
+                    <button
+                      key={item.value}
+                      type="button"
+                      onClick={() =>
+                        setLockReason(
+                          item.value as
+                            | "temporary_leave"
+                            | "security_concern"
+                            | "privacy_break"
+                            | "other",
+                        )
+                      }
+                      className={`rounded-xl border px-3 py-2 text-left text-sm transition ${
+                        lockReason === item.value
+                          ? "border-rose-500 bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300"
+                          : "border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700/50"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+
+                {lockReason === "other" && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold tracking-wide uppercase text-slate-500">
+                      Lý do cụ thể
+                    </label>
+                    <Input
+                      placeholder="Nhập lý do của bạn"
+                      value={lockOtherReason}
+                      onChange={(e) => setLockOtherReason(e.target.value)}
+                      className="h-11 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                    />
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setLockStep(1)}
+                    className="flex-1"
+                  >
+                    Quay lại
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={handleContinueFromReason}
+                    className="flex-1 bg-rose-600 hover:bg-rose-700"
+                  >
+                    Tiếp tục
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {lockStep === 3 && (
+              <div className="space-y-3">
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Xác nhận tạm khóa tài khoản. Sau khi thành công, bạn sẽ
+                  được đăng xuất khỏi tất cả phiên đăng nhập.
+                </p>
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900/60 dark:bg-rose-900/20 dark:text-rose-300">
+                  <p>
+                    <b>Email xác minh:</b> {effectiveEmail || "—"}
+                  </p>
+                  <p className="mt-1">
+                    <b>Hiệu lực đến:</b> Vô hạn
+                  </p>
+                  <p className="mt-1">
+                    <b>Lý do:</b>{" "}
+                    {{
+                      temporary_leave: "Tạm thời không sử dụng",
+                      security_concern: "Lo ngại bảo mật",
+                      privacy_break: "Muốn tạm ẩn riêng tư",
+                      other: lockOtherReason.trim() || "Lý do khác",
+                    }[lockReason]}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setLockStep(2)}
+                    className="flex-1"
+                  >
+                    Quay lại
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={handleConfirmLock}
+                    disabled={isConfirmingLock}
+                    className="flex-1 bg-rose-600 hover:bg-rose-700"
+                  >
+                    {isConfirmingLock && (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    )}
+                    Xác nhận & tạm khóa
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>

@@ -6,17 +6,25 @@ import { userService, UpdateProfilePayload } from "@/api/user";
 import { useAuthStore } from "@/store/use-auth-store";
 import { validateImageFile } from "@/lib/cloudinary";
 
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  if (!error || typeof error !== "object") return fallback;
+  const err = error as {
+    response?: {
+      data?: {
+        message?: string;
+      };
+    };
+  };
+  return err.response?.data?.message || fallback;
+};
+
 export const useUpdateProfile = () => {
   const queryClient = useQueryClient();
   const { setAuth } = useAuthStore();
 
   return useMutation({
-    mutationFn: async (
-      data: UpdateProfilePayload & { avatarFile?: File; coverFile?: File },
-    ) => {
-      const { avatarFile, coverFile, ...profileData } = data;
-
-      return userService.updateProfile(profileData);
+    mutationFn: async (data: UpdateProfilePayload) => {
+      return userService.updateProfile(data);
     },
 
     onSuccess: (response) => {
@@ -31,10 +39,8 @@ export const useUpdateProfile = () => {
       toast.success("Hồ sơ đã được cập nhật");
     },
 
-    onError: (error: any) => {
-      const message =
-        error?.response?.data?.message || "Không thể cập nhật hồ sơ";
-      toast.error(message);
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, "Không thể cập nhật hồ sơ"));
     },
   });
 };
@@ -62,10 +68,8 @@ export const useUpdateAvatar = () => {
       toast.success("Avatar đã được cập nhật");
     },
 
-    onError: (error: any) => {
-      toast.error(
-        error?.response?.data?.message || "Không thể cập nhật avatar",
-      );
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, "Không thể cập nhật avatar"));
     },
   });
 };
@@ -89,8 +93,8 @@ export const useDeleteAvatar = () => {
       toast.success(response.msg || "Avatar đã được xóa");
     },
 
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || "Không thể xóa avatar");
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, "Không thể xóa avatar"));
     },
   });
 };
@@ -111,13 +115,37 @@ export const useUpdateCoverImage = () => {
         setAuth(response.user, token);
       }
       queryClient.invalidateQueries({ queryKey: ["profile"] });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+      queryClient.invalidateQueries({ queryKey: ["presigned-url"] });
       toast.success("Ảnh bìa đã được cập nhật");
     },
 
-    onError: (error: any) => {
-      toast.error(
-        error?.response?.data?.message || "Không thể cập nhật ảnh bìa",
-      );
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, "Không thể cập nhật ảnh bìa"));
+    },
+  });
+};
+
+export const useDeleteCoverImage = () => {
+  const queryClient = useQueryClient();
+  const { setAuth } = useAuthStore();
+
+  return useMutation({
+    mutationFn: userService.deleteCoverImage,
+
+    onSuccess: (response) => {
+      const token = useAuthStore.getState().token;
+      if (token) {
+        setAuth(response.user, token);
+      }
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+      queryClient.invalidateQueries({ queryKey: ["presigned-url"] });
+      toast.success(response.message || response.msg || "Ảnh bìa đã được xóa");
+    },
+
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, "Không thể xóa ảnh bìa"));
     },
   });
 };

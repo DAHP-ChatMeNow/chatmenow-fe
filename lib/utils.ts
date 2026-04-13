@@ -102,3 +102,42 @@ export function formatPresenceStatus(
   const year = date.getFullYear();
   return `${day}/${month}/${year}`;
 }
+
+/**
+ * Format timestamp for posts
+ * Today: HH:mm
+ * Yesterday: HH:mm hôm qua
+ * Older: DD/MM/YYYY HH:mm
+ */
+export function formatPostTime(dateInput: string | Date | undefined): string {
+  if (!dateInput) return "";
+  const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  if (isNaN(date.getTime())) return "";
+
+  const now = new Date();
+  
+  const timeString = date.toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  const isToday = date.toDateString() === now.toDateString();
+  if (isToday) {
+    return timeString;
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) {
+    return `${timeString} hôm qua`;
+  }
+
+  const dateString = date.toLocaleDateString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+  
+  return `${dateString} ${timeString}`;
+}

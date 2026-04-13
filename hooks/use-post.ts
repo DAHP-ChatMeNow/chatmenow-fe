@@ -13,14 +13,97 @@ import {
   PostAiChatPayload,
   AiSuggestion,
   UpdatePostPrivacyPayload,
+  SharePostPayload,
+  SharePostToChatPayload,
 } from "@/api/post";
 import { Post } from "@/types/post";
 import { Comment } from "@/types/comment";
 
+const MEDIA_PRELOAD_TIMEOUT_MS = 12000;
+
+const withTimeout = (promise: Promise<void>, timeoutMs: number) =>
+  new Promise<void>((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    }, timeoutMs);
+
+    void promise.finally(() => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+
+const preloadImage = (url: string) =>
+  withTimeout(
+    new Promise<void>((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve();
+      img.onerror = () => resolve();
+      img.src = url;
+    }),
+    MEDIA_PRELOAD_TIMEOUT_MS,
+  );
+
+const preloadVideo = (url: string) =>
+  withTimeout(
+    new Promise<void>((resolve) => {
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      video.onloadedmetadata = () => resolve();
+      video.onerror = () => resolve();
+      video.src = url;
+      try {
+        video.load();
+      } catch {
+        resolve();
+      }
+    }),
+    MEDIA_PRELOAD_TIMEOUT_MS,
+  );
+
+const isVideoMedia = (type?: string, url?: string) => {
+  const mediaType = String(type || "")
+    .trim()
+    .toLowerCase();
+  if (mediaType === "video" || mediaType.startsWith("video/")) return true;
+
+  const mediaUrl = String(url || "").toLowerCase();
+  return /\.(mp4|mov|avi|mkv|webm|m4v)(\?|#|$)/i.test(mediaUrl);
+};
+
+const preloadMediaForPosts = async (posts?: Post[]) => {
+  if (typeof window === "undefined") return;
+  if (!Array.isArray(posts) || posts.length === 0) return;
+
+  const tasks = new Map<string, Promise<void>>();
+
+  posts.forEach((post) => {
+    post.media?.forEach((media) => {
+      const url = media?.url;
+      if (!url || tasks.has(url)) return;
+      tasks.set(
+        url,
+        isVideoMedia(media?.type, url) ? preloadVideo(url) : preloadImage(url),
+      );
+    });
+  });
+
+  await Promise.all(tasks.values());
+};
+
 export const useFeed = () => {
   return useInfiniteQuery({
     queryKey: ["posts", "feed"],
-    queryFn: ({ pageParam }) => postService.getFeed({ pageParam }),
+    queryFn: async ({ pageParam }) => {
+      const result = await postService.getFeed({ pageParam });
+      await preloadMediaForPosts(result.posts);
+      return result;
+    },
     getNextPageParam: (lastPage) => {
       return lastPage.hasMore ? lastPage.nextPage : undefined;
     },
@@ -301,7 +384,11 @@ export const usePostAiChat = () => {
 export const useUserPosts = (userId: string | undefined) => {
   return useInfiniteQuery({
     queryKey: ["posts", "me"],
-    queryFn: ({ pageParam }) => postService.getMyPosts({ pageParam }),
+    queryFn: async ({ pageParam }) => {
+      const result = await postService.getMyPosts({ pageParam });
+      await preloadMediaForPosts(result.posts);
+      return result;
+    },
     getNextPageParam: (lastPage) =>
       lastPage.hasMore ? lastPage.nextPage : undefined,
     initialPageParam: 1,
@@ -312,11 +399,63 @@ export const useUserPosts = (userId: string | undefined) => {
 export const useProfilePosts = (userId: string | undefined) => {
   return useInfiniteQuery({
     queryKey: ["posts", "user", userId],
-    queryFn: ({ pageParam }) =>
-      postService.getUserPosts({ userId: userId!, pageParam }),
+    queryFn: async ({ pageParam }) => {
+      const result = await postService.getUserPosts({ userId: userId!, pageParam });
+      await preloadMediaForPosts(result.posts);
+      return result;
+    },
     getNextPageParam: (lastPage) =>
       lastPage.hasMore ? lastPage.nextPage : undefined,
     initialPageParam: 1,
     enabled: !!userId,
+  });
+};
+
+export const useSharePost = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      postId,
+      payload,
+    }: {
+      postId: string;
+      payload: SharePostPayload;
+    }) => postService.sharePost(postId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["posts", "feed"] });
+      queryClient.invalidateQueries({ queryKey: ["posts", "me"] });
+      queryClient.invalidateQueries({ queryKey: ["posts", "user"] });
+      toast.success("Đã chia sẻ lên trang cá nhân");
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || "Không thể chia sẻ bài viết");
+    },
+  });
+};
+
+export const useSharePostToChat = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      postId,
+      payload,
+    }: {
+      postId: string;
+      payload: SharePostToChatPayload;
+    }) => postService.sharePostToChat(postId, payload),
+    onSuccess: (_result, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({
+        queryKey: ["messages", variables.payload.conversationId],
+      });
+      toast.success("Đã chia sẻ vào cuộc trò chuyện");
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message || "Không thể chia sẻ vào cuộc trò chuyện",
+      );
+    },
   });
 };

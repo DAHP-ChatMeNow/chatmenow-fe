@@ -4,6 +4,11 @@ import { User, AccountStatus } from "@/types/user";
 export interface UpdateProfilePayload {
   displayName?: string;
   bio?: string;
+  hometown?: string;
+  phoneNumber?: string;
+  gender?: string;
+  school?: string;
+  maritalStatus?: string;
   language?: string;
   themeColor?: string;
 }
@@ -34,6 +39,20 @@ export interface UploadAvatarResponse {
 
 export interface DeleteAvatarResponse {
   msg: string;
+  user: User;
+}
+
+export interface UploadCoverImageResponse {
+  success: boolean;
+  message: string;
+  user: User;
+  coverImage?: string;
+}
+
+export interface DeleteCoverImageResponse {
+  success?: boolean;
+  message?: string;
+  msg?: string;
   user: User;
 }
 
@@ -156,18 +175,30 @@ export const userService = {
   },
 
   /**
-   * Update user cover image - gửi file trực tiếp đến backend
-   * Backend sẽ xử lý upload Cloudinary
+   * Upload user cover image to S3
    * @param file - Cover image file
    */
   updateCoverImage: async (file: File) => {
     const formData = new FormData();
-    formData.append("coverImage", file);
-    const res = await api.put<UpdateProfileResponse>("/users/cover", formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
+    // Keep the same multipart field as avatar upload for multer.single("image").
+    formData.append("image", file);
+    const res = await api.post<UploadCoverImageResponse>(
+      "/upload/cover-image",
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
       },
-    });
+    );
+    return res.data;
+  },
+
+  /**
+   * Delete current user's cover image
+   */
+  deleteCoverImage: async () => {
+    const res = await api.delete<DeleteCoverImageResponse>("/upload/cover-image");
     return res.data;
   },
 

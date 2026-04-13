@@ -42,12 +42,17 @@ import { useSocket } from "@/components/providers/socket-provider";
 import { Message } from "@/types/message";
 import { MessageAttachment } from "@/types/message";
 import { PresignedAvatar } from "@/components/ui/presigned-avatar";
+import { SharedPostPreview } from "@/components/post/shared-post-preview";
 import { useQueryClient } from "@tanstack/react-query";
 import { chatService, MessagesResponse } from "@/api/chat";
 import { usePresignedUrl } from "@/hooks/use-profile";
 import { toast } from "sonner";
 
 type ChatBackgroundKey = "default" | "sky" | "sunset" | "mint" | "night";
+type SharedPostMessage = Message & {
+  sharedPostId?: string;
+  sharedPost?: Message["sharedPost"];
+};
 
 const CHAT_BACKGROUND_CLASS: Record<ChatBackgroundKey, string> = {
   default: "bg-gradient-to-b from-white to-slate-50/40",
@@ -1254,14 +1259,34 @@ export default function ChatDetailClient({
                   const messageTime = formatMessageClock(msg.createdAt);
                   const messageId = msg.id || msg._id;
                   const isTextMessage = msg.type === "text";
+                  const isUnsent = Boolean(msg.isUnsent || msg.unsentAt);
                   const attachments = msg.attachments || [];
+                  const sharedPostMessage = msg as SharedPostMessage;
+                  const sharedPostData = sharedPostMessage.sharedPost;
+                  const sharedPostId = String(
+                    sharedPostMessage.sharedPostId ||
+                      sharedPostData?.id ||
+                      sharedPostData?._id ||
+                      "",
+                  ).trim();
+                  const hasSharedPost =
+                    msg.type === "shared_post" &&
+                    !isUnsent &&
+                    (Boolean(sharedPostData) || Boolean(sharedPostId));
+                  const sharedPostPreview = hasSharedPost
+                    ? sharedPostData || {
+                        id: sharedPostId,
+                        _id: sharedPostId,
+                        isAccessible: true,
+                        content: "Bài viết được chia sẻ",
+                      }
+                    : null;
                   const isAttachmentOnlyMessage =
                     attachments.length > 0 &&
                     !msg.content &&
                     msg.type !== "audio";
                   const isPlainAttachmentBubble =
                     isMe && isAttachmentOnlyMessage;
-                  const isUnsent = Boolean(msg.isUnsent || msg.unsentAt);
                   const canEdit =
                     isMe && isTextMessage && !isUnsent && !isAiMessage;
                   const canUnsend = isMe && !isUnsent && !isAiMessage;
@@ -1371,6 +1396,77 @@ export default function ChatDetailClient({
                           className="w-8 h-8 shrink-0 self-end"
                         />
                       )}
+                      <div
+                        data-message-action-scope={isMe ? "true" : undefined}
+                        onTouchStart={() => {
+                          if (!isMe) return;
+                          handleMessageTouchStart(messageId, canShowActions);
+                        }}
+                        onTouchEnd={clearLongPressTimer}
+                        onTouchCancel={clearLongPressTimer}
+                        onTouchMove={clearLongPressTimer}
+                        className={`group rounded-2xl text-[14px] md:text-[15px] max-w-[84%] md:max-w-[70%] xl:max-w-[64%] ${
+                          isPlainAttachmentBubble
+                            ? "w-fit p-0 bg-transparent text-slate-800 shadow-none"
+                            : `px-4 py-2.5 shadow-sm ${
+                                isMe
+                                  ? "bg-blue-600 text-white rounded-br-none"
+                                  : "bg-white text-slate-800 border border-slate-100 rounded-bl-none"
+                              }`
+                        }`}
+                      >
+                        {attachments.length > 0 && (
+                          <div className={msg.content ? "mb-2" : ""}>
+                            <div className="flex flex-col gap-2">
+                              {attachments.map((attachment, index) => (
+                                <MessageAttachmentItem
+                                  key={`${attachment.key || attachment.url || attachment.fileName}-${index}`}
+                                  attachment={attachment}
+                                  isMe={isMe}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {hasSharedPost && (
+                          <div className={msg.content ? "mb-2" : ""}>
+                            <SharedPostPreview
+                              post={sharedPostPreview}
+                              isMe={isMe}
+                              compact
+                            />
+                          </div>
+                        )}
+                        {msg.content ? renderMessageContent(msg.content) : null}
+                        {msg.type === "audio" && attachments.length === 0 && (
+                          <div
+                            className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm ${
+                              isMe
+                                ? "bg-blue-500/40 text-blue-50"
+                                : "bg-slate-100 text-slate-700"
+                            }`}
+                          >
+                            <FileAudio2 className="h-4 w-4" />
+                            Tin nhắn ghi âm
+                          </div>
+                        )}
+                        {isAiMessage && !isMe && (
+                          <div className="mt-1.5 flex justify-start">
+                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-600">
+                              AI
+                            </span>
+                          </div>
+                        )}
+                        {!isMe && statusText && (
+                          <div
+                            className={`text-[10px] mt-1 text-right ${
+                              isMe ? "text-blue-100" : "text-slate-400"
+                            }`}
+                            suppressHydrationWarning
+                          >
+                            {statusText}
+                          </div>
+                        )}
 
                       {/* Emote button LEFT side (for my messages) */}
                       {isMe && !isUnsent && messageId && (

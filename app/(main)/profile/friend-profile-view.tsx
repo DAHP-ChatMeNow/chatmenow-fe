@@ -54,6 +54,13 @@ export default function FriendProfileView({ userId }: FriendProfileViewProps) {
       ),
     [friend?.isOnline, friend?.lastSeen, friend?.lastSeenText],
   );
+  const profileDetails = [
+    { label: "Quê quán", value: friend?.hometown },
+    { label: "Số điện thoại", value: friend?.phoneNumber },
+    { label: "Giới tính", value: friend?.gender },
+    { label: "Trường học", value: friend?.school },
+    { label: "Tình trạng hôn nhân", value: friend?.maritalStatus },
+  ].filter((item) => !!item.value?.trim());
 
   const handleOpenChat = () => {
     if (!friend?.id) return;
@@ -163,6 +170,23 @@ export default function FriendProfileView({ userId }: FriendProfileViewProps) {
                       <p className="mt-3 text-sm text-slate-600">
                         {friend.bio}
                       </p>
+                    )}
+                    {profileDetails.length > 0 && (
+                      <div className="grid gap-2 mt-3 sm:grid-cols-2">
+                        {profileDetails.map((item) => (
+                          <div
+                            key={item.label}
+                            className="px-3 py-2 text-xs rounded-lg bg-slate-100"
+                          >
+                            <p className="font-semibold text-slate-500">
+                              {item.label}
+                            </p>
+                            <p className="mt-0.5 text-sm text-slate-800">
+                              {item.value}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
 

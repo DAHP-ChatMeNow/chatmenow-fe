@@ -45,6 +45,8 @@ import { useAuthStore } from "@/store/use-auth-store";
 import { Post, PostMedia, PostPrivacy } from "@/types/post";
 import { toast } from "sonner";
 import { PostMediaLightbox } from "@/components/post/post-media-lightbox";
+import { PostShareDialog } from "@/components/post/post-share-dialog";
+import { SharedPostPreview } from "@/components/post/shared-post-preview";
 import { StoryViewer } from "@/components/post/story-viewer";
 import {
   AiPostChatPopup,
@@ -64,6 +66,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getPostPrivacyLabel, POST_PRIVACY_OPTIONS } from "@/lib/post-privacy";
+import { formatPostTime } from "@/lib/utils";
 
 type AskAiPayload = {
   content?: string;
@@ -1257,6 +1260,7 @@ function ProfilePostCard({
   const canAskAiInChat =
     !aiSuggestion?.action || aiSuggestion.action === "ask_ai_in_chat";
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const likesCount = post.likesCount ?? 0;
   const commentsCount = post.commentsCount ?? 0;
   const hasStats = likesCount > 0 || commentsCount > 0;
@@ -1283,13 +1287,7 @@ function ProfilePostCard({
               {post.author?.displayName || "User"}
             </p>
             <p className="flex items-center gap-1 text-[11px] text-slate-400">
-              {new Date(post.createdAt).toLocaleDateString("vi-VN", {
-                day: "2-digit",
-                month: "2-digit",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
+              {formatPostTime(post.createdAt)}
               <span>•</span>
               <span className="inline-flex items-center gap-1 text-slate-500">
                 {getPostPrivacyIcon(post.privacy, "h-3 w-3")}
@@ -1367,6 +1365,12 @@ function ProfilePostCard({
         </p>
       )}
 
+      {post.sharedPost ? (
+        <div className="px-4 pb-3">
+          <SharedPostPreview post={post.sharedPost} />
+        </div>
+      ) : null}
+
       {post.media && post.media.length > 0 && (
         <div className="mx-0">
           <PostMediaGrid media={post.media} onMediaClick={setLightboxIndex} />
@@ -1430,11 +1434,20 @@ function ProfilePostCard({
           <MessageCircle className="w-4 h-4" />
           Bình luận
         </button>
-        <button className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold text-slate-500 hover:bg-slate-50 transition-colors rounded-none">
+        <button
+          onClick={() => setIsShareDialogOpen(true)}
+          className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold text-slate-500 hover:bg-slate-50 transition-colors rounded-none"
+        >
           <Share2 className="w-4 h-4" />
           Chia sẻ
         </button>
       </div>
+
+      <PostShareDialog
+        postId={post.id}
+        open={isShareDialogOpen}
+        onOpenChange={setIsShareDialogOpen}
+      />
 
       {isExpanded && (
         <div className="min-w-0 px-4 pt-2 pb-4 space-y-3 border-t border-slate-100">

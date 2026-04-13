@@ -38,6 +38,37 @@ export type OtpResponse = {
   verified?: boolean;
 };
 
+export type AccountLockReason =
+  | "temporary_leave"
+  | "security_concern"
+  | "privacy_break"
+  | "other";
+
+export type ConfirmAccountLockPayload = {
+  lockVerificationToken: string;
+  reason: AccountLockReason;
+  otherReason?: string;
+};
+
+export type VerifyAccountLockOtpPayload = {
+  otp: string;
+};
+
+export type VerifyAccountLockOtpResponse = OtpResponse & {
+  lockVerificationToken: string;
+  expiresIn: number;
+  expiresAt: string;
+};
+
+export type SendAccountUnlockOtpPayload = {
+  email: string;
+};
+
+export type ConfirmAccountUnlockPayload = {
+  email: string;
+  otp: string;
+};
+
 export type AuthResponse = {
   user: User;
   token: string;
@@ -111,6 +142,40 @@ const getMe = async () => {
   return data.user;
 };
 
+const sendAccountLockOtp = async () => {
+  const { data } = await api.post<OtpResponse>("/auth/account-lock/send-otp");
+  return data;
+};
+
+const verifyAccountLockOtp = async (payload: VerifyAccountLockOtpPayload) => {
+  const { data } = await api.post<VerifyAccountLockOtpResponse>(
+    "/auth/account-lock/verify-otp",
+    payload,
+  );
+  return data;
+};
+
+const confirmAccountLock = async (payload: ConfirmAccountLockPayload) => {
+  const { data } = await api.post<OtpResponse>("/auth/account-lock/confirm", payload);
+  return data;
+};
+
+const sendAccountUnlockOtp = async (payload: SendAccountUnlockOtpPayload) => {
+  const { data } = await api.post<OtpResponse>(
+    "/auth/account-unlock/send-otp",
+    payload,
+  );
+  return data;
+};
+
+const confirmAccountUnlock = async (payload: ConfirmAccountUnlockPayload) => {
+  const { data } = await api.post<OtpResponse>(
+    "/auth/account-unlock/confirm",
+    payload,
+  );
+  return data;
+};
+
 export const authService = {
   login,
   sendOtp,
@@ -120,4 +185,9 @@ export const authService = {
   rememberedLogin,
   getRememberedAccountInfo,
   revokeRememberedAccount,
+  sendAccountLockOtp,
+  verifyAccountLockOtp,
+  confirmAccountLock,
+  sendAccountUnlockOtp,
+  confirmAccountUnlock,
 };

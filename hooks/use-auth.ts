@@ -7,9 +7,14 @@ import { toast } from "sonner";
 
 import {
   authService,
+  ConfirmAccountLockPayload,
+  ConfirmAccountUnlockPayload,
   LoginPayload,
   RegisterPayload,
+  SendAccountUnlockOtpPayload,
   SendOtpPayload,
+  VerifyAccountLockOtpPayload,
+  VerifyAccountLockOtpResponse,
   VerifyOtpPayload,
   OtpResponse,
   AuthResponse,
@@ -45,7 +50,7 @@ const getErrorMessage = (error: unknown) => {
       /(inactive|vô hiệu|vo hieu)/i.test(normalizedMessage);
 
     if ((status === 401 || status === 403) && isAccountLocked) {
-      return "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.";
+      return "Tài khoản của bạn đang tạm khóa. Hãy mở khóa bằng OTP gửi về email.";
     }
 
     if ((status === 401 || status === 403) && isAccountSuspended) {
@@ -251,6 +256,75 @@ export const useRevokeRememberedAccount = () => {
     onSuccess: (_, variables) => {
       removeRememberedAccount(variables.rememberToken);
       toast.success("Đã xóa tài khoản đã lưu");
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error));
+    },
+  });
+};
+
+export const useSendAccountLockOtp = () => {
+  return useMutation<OtpResponse, unknown, void>({
+    mutationFn: authService.sendAccountLockOtp,
+    onSuccess: (data) => {
+      toast.success(data.message ?? "Đã gửi OTP khóa tài khoản vào email");
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error));
+    },
+  });
+};
+
+export const useConfirmAccountLock = () => {
+  const logout = useAuthStore((state) => state.logout);
+  const router = useRouter();
+
+  return useMutation<OtpResponse, unknown, ConfirmAccountLockPayload>({
+    mutationFn: authService.confirmAccountLock,
+    onSuccess: (data) => {
+      toast.success(data.message ?? "Tài khoản đã được tạm khóa");
+      logout();
+      router.replace("/login");
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error));
+    },
+  });
+};
+
+export const useVerifyAccountLockOtp = () => {
+  return useMutation<
+    VerifyAccountLockOtpResponse,
+    unknown,
+    VerifyAccountLockOtpPayload
+  >({
+    mutationFn: authService.verifyAccountLockOtp,
+    onSuccess: (data) => {
+      toast.success(data.message ?? "Xác minh OTP thành công");
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error));
+    },
+  });
+};
+
+export const useSendAccountUnlockOtp = () => {
+  return useMutation<OtpResponse, unknown, SendAccountUnlockOtpPayload>({
+    mutationFn: authService.sendAccountUnlockOtp,
+    onSuccess: (data) => {
+      toast.success(data.message ?? "Đã gửi OTP mở khóa vào email");
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error));
+    },
+  });
+};
+
+export const useConfirmAccountUnlock = () => {
+  return useMutation<OtpResponse, unknown, ConfirmAccountUnlockPayload>({
+    mutationFn: authService.confirmAccountUnlock,
+    onSuccess: (data) => {
+      toast.success(data.message ?? "Mở khóa tài khoản thành công");
     },
     onError: (error) => {
       toast.error(getErrorMessage(error));

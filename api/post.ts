@@ -17,6 +17,17 @@ export type UpdatePostPrivacyPayload = {
   customAudienceIds?: string[];
 };
 
+export type SharePostPayload = {
+  content?: string;
+  privacy?: PostPrivacy;
+  customAudienceIds?: string[];
+};
+
+export type SharePostToChatPayload = {
+  conversationId: string;
+  content?: string;
+};
+
 interface BackendPost {
   id?: string;
   _id: string;
@@ -29,6 +40,10 @@ interface BackendPost {
   commentsCount: number;
   trendingScore: number;
   isLikedByCurrentUser?: boolean;
+  sharedPostId?: string | { _id?: string; id?: string };
+  sharedPost?: Partial<BackendPost> & {
+    isAccessible?: boolean;
+  };
   createdAt: Date;
   updatedAt?: Date;
 }
@@ -277,22 +292,84 @@ const normalizeCustomAudienceIds = (
     .filter(Boolean);
 };
 
-const mapBackendPost = async (post: BackendPost): Promise<Post> => ({
-  id: post._id,
-  _id: post._id,
-  authorId: (post.authorId as any)?._id || post.authorId,
-  author: typeof post.authorId === "string" ? undefined : (post.authorId as User),
-  content: post.content,
-  privacy: post.privacy,
-  customAudienceIds: normalizeCustomAudienceIds(post.customAudienceIds),
-  media: await refreshPostMediaUrls(post.media),
-  likesCount: post.likesCount || 0,
-  commentsCount: post.commentsCount || 0,
-  trendingScore: post.trendingScore || 0,
-  isLikedByCurrentUser: post.isLikedByCurrentUser || false,
-  createdAt: post.createdAt,
-  updatedAt: post.updatedAt,
-});
+const toIdString = (
+  value?: string | { _id?: string; id?: string } | null,
+): string | undefined => {
+  if (!value) return undefined;
+  if (typeof value === "string") return value;
+  return value._id || value.id;
+};
+
+const mapSharedPostReference = async (
+  raw?: BackendPost["sharedPost"],
+): Promise<Post["sharedPost"]> => {
+  if (!raw || typeof raw !== "object") return undefined;
+
+  const source = ((raw as any).postId &&
+  typeof (raw as any).postId === "object"
+    ? (raw as any).postId
+    : raw) as BackendPost["sharedPost"] & Partial<BackendPost>;
+
+  const sharedId = toIdString(
+    (source as any)._id || (source as any).id || (raw as any).postId,
+  );
+  const isAccessible =
+    (source as any).isAccessible !== false && (raw as any).isAccessible !== false;
+
+  if (!isAccessible) {
+    return {
+      id: sharedId,
+      _id: sharedId,
+      isAccessible: false,
+    };
+  }
+
+  const authorRaw = source.authorId;
+  return {
+    id: sharedId,
+    _id: sharedId,
+    isAccessible: true,
+    authorId:
+      typeof authorRaw === "string"
+        ? authorRaw
+        : (authorRaw as any)?._id || (authorRaw as any)?.id,
+    author: typeof authorRaw === "string" ? undefined : (authorRaw as User),
+    content: String(source.content || ""),
+    privacy: source.privacy,
+    media: await refreshPostMediaUrls(source.media),
+    createdAt: source.createdAt,
+    updatedAt: source.updatedAt,
+  };
+};
+
+const mapBackendPost = async (post: BackendPost): Promise<Post> => {
+  const sharedPostId = toIdString(
+    post.sharedPostId ||
+      (post.sharedPost as any)?._id ||
+      (post.sharedPost as any)?.id ||
+      (post.sharedPost as any)?.postId?._id ||
+      (post.sharedPost as any)?.postId?.id,
+  );
+
+  return {
+    id: post._id,
+    _id: post._id,
+    authorId: (post.authorId as any)?._id || post.authorId,
+    author: typeof post.authorId === "string" ? undefined : (post.authorId as User),
+    content: post.content,
+    privacy: post.privacy,
+    customAudienceIds: normalizeCustomAudienceIds(post.customAudienceIds),
+    media: await refreshPostMediaUrls(post.media),
+    likesCount: post.likesCount || 0,
+    commentsCount: post.commentsCount || 0,
+    trendingScore: post.trendingScore || 0,
+    isLikedByCurrentUser: post.isLikedByCurrentUser || false,
+    sharedPostId,
+    sharedPost: await mapSharedPostReference(post.sharedPost),
+    createdAt: post.createdAt,
+    updatedAt: post.updatedAt,
+  };
+};
 
 const getFeed = async ({ pageParam = 1 }: { pageParam?: number }) => {
   const { data } = await api.get<{
@@ -516,6 +593,28 @@ const deletePost = async (postId: string) => {
   return data;
 };
 
+const sharePost = async (postId: string, payload: SharePostPayload) => {
+  const { data } = await api.post<any>(`/posts/${postId}/share`, {
+    content: payload.content || "",
+    privacy: payload.privacy || "public",
+    customAudienceIds: payload.customAudienceIds || [],
+  });
+
+  const backendPost = (data?.post || data?.sharedPost || data?.data?.post || data) as BackendPost;
+  if (backendPost?._id) {
+    return mapBackendPost(backendPost);
+  }
+  return data;
+};
+
+const sharePostToChat = async (postId: string, payload: SharePostToChatPayload) => {
+  const { data } = await api.post<any>(`/posts/${postId}/share-to-chat`, {
+    conversationId: payload.conversationId,
+    content: payload.content || "",
+  });
+  return data;
+};
+
 export const postService = {
   getFeed,
   createPost,
@@ -528,4 +627,6 @@ export const postService = {
   sendPostAiChat,
   getMyPosts,
   getUserPosts,
+  sharePost,
+  sharePostToChat,
 };
