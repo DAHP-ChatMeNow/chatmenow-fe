@@ -16,6 +16,9 @@ const formatLastMessagePreview = (conversation: Conversation): string => {
   ).toLowerCase();
 
   if (lastMessage.type === "system") {
+    if (callStatus === "accepted") {
+      return lastMessage.content || "Một thành viên đã tham gia cuộc gọi";
+    }
     if (callStatus === "ended") return "Cuộc gọi kết thúc";
     if (callStatus === "rejected") return "Cuộc gọi bị từ chối";
     if (callStatus === "missed") return "Cuộc gọi nhỡ";

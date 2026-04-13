@@ -12,8 +12,6 @@ import {
 } from "react";
 import {
   LocalTrackPublication,
-  RemoteTrack,
-  RemoteTrackPublication,
   Room,
   RoomEvent,
   Track,
@@ -34,7 +32,11 @@ import { useSocket } from "@/components/providers/socket-provider";
 import { userService } from "@/api/user";
 import { useAuthStore } from "@/store/use-auth-store";
 import { BASE_API_URL } from "@/types/utils";
-import { IncomingCallData, VideoCallType } from "@/types/video-call";
+import {
+  IncomingCallData,
+  VideoCallMode,
+  VideoCallType,
+} from "@/types/video-call";
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (!error || typeof error !== "object") return fallback;
@@ -63,6 +65,8 @@ interface ActiveCallState {
   roomId: string;
   peerUserId: string;
   peerName?: string;
+  callMode: VideoCallMode;
+  participantUserIds?: string[];
   callType: VideoCallType;
   conversationId?: string;
   isCaller: boolean;
@@ -75,6 +79,13 @@ interface StartCallPayload {
   callType?: VideoCallType;
 }
 
+interface StartGroupCallPayload {
+  participantIds: string[];
+  conversationId?: string;
+  groupName?: string;
+  callType?: VideoCallType;
+}
+
 interface VideoCallContextType {
   phase: CallPhase;
   incomingCall: IncomingCallData | null;
@@ -83,6 +94,7 @@ interface VideoCallContextType {
   isCameraOff: boolean;
   isBusy: boolean;
   startCall: (payload: StartCallPayload) => Promise<void>;
+  startGroupCall: (payload: StartGroupCallPayload) => Promise<void>;
   acceptIncomingCall: () => Promise<void>;
   rejectIncomingCall: (reason?: string) => Promise<void>;
   endCall: () => Promise<void>;
@@ -97,6 +109,13 @@ interface LivekitTokenResponse {
   identity?: string;
   participantName?: string;
   expiresIn?: number;
+}
+
+interface RemoteParticipantStream {
+  participantId: string;
+  name: string;
+  stream: MediaStream | null;
+  hasVideo: boolean;
 }
 
 const VideoCallContext = createContext<VideoCallContextType | null>(null);
@@ -260,9 +279,20 @@ const parseIncomingCall = (
     toAvatarValue((caller as Record<string, unknown>).profilePicture) ||
     toAvatarValue(payload.avatar);
 
+  const participantIds = [payload.participantIds, payload.toUserIds]
+    .flatMap((value) => (Array.isArray(value) ? value : []))
+    .map((id) => toId(id))
+    .filter((id): id is string => Boolean(id));
+
+  const callMode: VideoCallMode =
+    payload.callMode === "group" || participantIds.length > 0
+      ? "group"
+      : "direct";
+
   return {
     roomId,
     callId: normalizeRoomId(payload.callId),
+    callMode,
     callerId,
     callerName:
       (payload.callerName as string | undefined) ||
@@ -270,6 +300,7 @@ const parseIncomingCall = (
       "Người dùng",
     callerAvatar: callerAvatar || "",
     receiverId: toId(payload.receiverId) || toId(payload.toUserId),
+    participantIds,
     callType: (payload.callType as VideoCallType) || "video",
     conversationId: toId(payload.conversationId),
   };
@@ -279,6 +310,14 @@ const toMediaStreamTrack = (track: unknown): MediaStreamTrack | null => {
   if (!track || typeof track !== "object") return null;
   const candidate = track as { mediaStreamTrack?: MediaStreamTrack };
   return candidate.mediaStreamTrack || null;
+};
+
+const getVideoGridClass = (tileCount: number): string => {
+  if (tileCount <= 1) return "grid-cols-1";
+  if (tileCount === 2) return "grid-cols-1 md:grid-cols-2";
+  if (tileCount <= 4) return "grid-cols-2";
+  if (tileCount <= 6) return "grid-cols-2 md:grid-cols-3";
+  return "grid-cols-2 md:grid-cols-3 lg:grid-cols-4";
 };
 
 function VideoElement({
@@ -333,15 +372,15 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
   );
   const [activeCall, setActiveCall] = useState<ActiveCallState | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const [remoteHasVideo, setRemoteHasVideo] = useState(false);
+  const [remoteParticipants, setRemoteParticipants] = useState<
+    RemoteParticipantStream[]
+  >([]);
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [durationSeconds, setDurationSeconds] = useState(0);
 
   const roomRef = useRef<Room | null>(null);
-  const remoteTracksRef = useRef<Map<string, RemoteTrack>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteEmptyTimeoutRef = useRef<number | null>(null);
   const activeCallRef = useRef<ActiveCallState | null>(null);
@@ -408,8 +447,7 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
         room.disconnect();
         roomRef.current = null;
       }
-
-      remoteTracksRef.current.clear();
+      setRemoteParticipants([]);
     },
     [callDebug],
   );
@@ -482,8 +520,7 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
 
   const stopStreams = useCallback(() => {
     setLocalStream(null);
-    setRemoteStream(null);
-    setRemoteHasVideo(false);
+    setRemoteParticipants([]);
     setIsMuted(false);
     setIsCameraOff(false);
     localStreamRef.current = null;
@@ -657,29 +694,54 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const syncRemoteStream = useCallback(() => {
-    const stream = new MediaStream();
-    let hasVideo = false;
-
-    for (const track of remoteTracksRef.current.values()) {
-      const mediaTrack = toMediaStreamTrack(track);
-      if (!mediaTrack) continue;
-
-      if (mediaTrack.kind === "video") {
-        hasVideo = true;
+  const syncRemoteParticipantsFromRoom = useCallback(
+    (targetRoom?: Room) => {
+      const room = targetRoom || roomRef.current;
+      if (!room) {
+        setRemoteParticipants([]);
+        return;
       }
 
-      stream.addTrack(mediaTrack);
-    }
+      const nextParticipants = Array.from(room.remoteParticipants.values()).map(
+        (participant) => {
+          const stream = new MediaStream();
+          let hasVideo = false;
 
-    setRemoteHasVideo(hasVideo);
-    setRemoteStream(stream.getTracks().length > 0 ? stream : null);
+          participant.trackPublications.forEach((publication) => {
+            if (!publication.isSubscribed || !publication.track) return;
 
-    if (stream.getTracks().length > 0) {
-      setPhase("active");
-      markCallStarted();
-    }
-  }, [markCallStarted]);
+            const mediaTrack = toMediaStreamTrack(publication.track);
+            if (!mediaTrack) return;
+
+            if (mediaTrack.kind === "video" && !publication.isMuted) {
+              hasVideo = true;
+            }
+
+            if (mediaTrack.kind === "video" && publication.isMuted) {
+              return;
+            }
+
+            stream.addTrack(mediaTrack);
+          });
+
+          return {
+            participantId: participant.identity || participant.sid,
+            name: participant.name?.trim() || participant.identity || "Thành viên",
+            stream: stream.getTracks().length > 0 ? stream : null,
+            hasVideo,
+          };
+        },
+      );
+
+      setRemoteParticipants(nextParticipants);
+
+      if (nextParticipants.length > 0) {
+        setPhase("active");
+        markCallStarted();
+      }
+    },
+    [markCallStarted],
+  );
 
   const getLivekitToken = useCallback(
     async (roomId: string): Promise<LivekitTokenResponse> => {
@@ -786,50 +848,58 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
         });
 
         roomRef.current = room;
-        remoteTracksRef.current.clear();
+        setRemoteParticipants([]);
 
         if (remoteEmptyTimeoutRef.current !== null) {
           window.clearTimeout(remoteEmptyTimeoutRef.current);
           remoteEmptyTimeoutRef.current = null;
         }
 
-        room.on(
-          RoomEvent.TrackSubscribed,
-          (track: RemoteTrack, publication: RemoteTrackPublication) => {
-            if (
-              track.kind !== Track.Kind.Audio &&
-              track.kind !== Track.Kind.Video
-            ) {
-              return;
-            }
+        room.on(RoomEvent.TrackSubscribed, (track) => {
+          if (
+            track.kind !== Track.Kind.Audio &&
+            track.kind !== Track.Kind.Video
+          ) {
+            return;
+          }
+          syncRemoteParticipantsFromRoom(room);
+        });
 
-            const trackKey =
-              publication.trackSid ||
-              track.sid ||
-              `${track.kind}-${track.source}-${Date.now()}`;
-            remoteTracksRef.current.set(trackKey, track);
-            syncRemoteStream();
-          },
-        );
+        room.on(RoomEvent.TrackUnsubscribed, () => {
+          syncRemoteParticipantsFromRoom(room);
+        });
 
-        room.on(
-          RoomEvent.TrackUnsubscribed,
-          (track: RemoteTrack, publication: RemoteTrackPublication) => {
-            const trackKey = publication.trackSid || track.sid;
-            if (!trackKey) return;
-            remoteTracksRef.current.delete(trackKey);
-            syncRemoteStream();
-          },
-        );
+        room.on(RoomEvent.TrackMuted, () => {
+          syncRemoteParticipantsFromRoom(room);
+        });
+
+        room.on(RoomEvent.TrackUnmuted, () => {
+          syncRemoteParticipantsFromRoom(room);
+        });
+
+        room.on(RoomEvent.TrackPublished, () => {
+          syncRemoteParticipantsFromRoom(room);
+        });
+
+        room.on(RoomEvent.TrackUnpublished, () => {
+          syncRemoteParticipantsFromRoom(room);
+        });
+
+        room.on(RoomEvent.ParticipantNameChanged, () => {
+          syncRemoteParticipantsFromRoom(room);
+        });
 
         room.on(RoomEvent.ParticipantConnected, () => {
           if (remoteEmptyTimeoutRef.current !== null) {
             window.clearTimeout(remoteEmptyTimeoutRef.current);
             remoteEmptyTimeoutRef.current = null;
           }
+          syncRemoteParticipantsFromRoom(room);
         });
 
         room.on(RoomEvent.ParticipantDisconnected, () => {
+          syncRemoteParticipantsFromRoom(room);
+
           if (room.remoteParticipants.size > 0) return;
 
           if (remoteEmptyTimeoutRef.current !== null) {
@@ -854,9 +924,7 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
           callDebug("room:disconnected", {
             roomId: call.roomId,
           });
-          remoteTracksRef.current.clear();
-          setRemoteStream(null);
-          setRemoteHasVideo(false);
+          setRemoteParticipants([]);
         });
 
         await room.connect(livekitUrl, tokenData.token);
@@ -879,6 +947,7 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
           callType: call.callType,
         });
 
+        syncRemoteParticipantsFromRoom(room);
         syncLocalStreamFromRoom(call.callType);
       } finally {
         if (connectingRoomIdRef.current === call.roomId) {
@@ -895,7 +964,7 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
       livekitEnvUrl,
       stopStreams,
       syncLocalStreamFromRoom,
-      syncRemoteStream,
+      syncRemoteParticipantsFromRoom,
       enableLocalTrackWithRetry,
     ],
   );
@@ -929,6 +998,8 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
           roomId,
           peerUserId: receiverId,
           peerName: receiverName,
+          callMode: "direct",
+          participantUserIds: [receiverId],
           callType,
           conversationId,
           isCaller: true,
@@ -941,6 +1012,7 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
         emitSignal("call-user", {
           toUserId: receiverId,
           roomId,
+          callMode: "direct",
           conversationId,
           callType,
         });
@@ -970,6 +1042,93 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
     ],
   );
 
+  const startGroupCall = useCallback(
+    async ({
+      participantIds,
+      conversationId,
+      groupName,
+      callType = "video",
+    }: StartGroupCallPayload) => {
+      if (!isCallEnabled) {
+        toast.info("Tính năng gọi đang tắt ở môi trường hiện tại");
+        return;
+      }
+
+      if (!socket.current || !isConnected) {
+        toast.error("Kết nối socket chưa sẵn sàng");
+        return;
+      }
+
+      if (!myUserId) {
+        toast.error("Không tìm thấy người dùng đã đăng nhập");
+        return;
+      }
+
+      const cleanParticipantIds = Array.from(
+        new Set(participantIds.filter((id) => Boolean(id) && id !== myUserId)),
+      );
+
+      if (cleanParticipantIds.length === 0) {
+        toast.info("Nhóm hiện không có thành viên hợp lệ để gọi");
+        return;
+      }
+
+      const roomId = buildRoomId(
+        conversationId,
+        myUserId,
+        cleanParticipantIds[0],
+      );
+
+      try {
+        const call: ActiveCallState = {
+          roomId,
+          peerUserId: cleanParticipantIds[0],
+          peerName: groupName || "Nhóm chat",
+          callMode: "group",
+          participantUserIds: cleanParticipantIds,
+          callType,
+          conversationId,
+          isCaller: true,
+        };
+
+        setIncomingCall(null);
+        setPhase("outgoing");
+        setActiveCall(call);
+
+        emitSignal("call-group", {
+          fromUserId: myUserId,
+          toUserIds: cleanParticipantIds,
+          roomId,
+          callMode: "group",
+          conversationId,
+          callType,
+        });
+
+        toast.success("Đang gọi nhóm...");
+        callDebug("startGroupCall:signal_sent", {
+          roomId,
+          participantCount: cleanParticipantIds.length,
+          callType,
+        });
+      } catch (error) {
+        console.error("startGroupCall error:", error);
+        toast.error(getErrorMessage(error, "Không thể bắt đầu gọi nhóm"));
+        leaveRoomAndReset("startGroupCall:error", {
+          message: getErrorMessage(error, "Không thể bắt đầu gọi nhóm"),
+        });
+      }
+    },
+    [
+      callDebug,
+      emitSignal,
+      isCallEnabled,
+      isConnected,
+      leaveRoomAndReset,
+      myUserId,
+      socket,
+    ],
+  );
+
   const acceptIncomingCall = useCallback(async () => {
     const callData = incomingCallRef.current;
     if (!callData || !myUserId) return;
@@ -978,6 +1137,8 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
       roomId: callData.roomId,
       peerUserId: callData.callerId,
       peerName: callData.callerName,
+      callMode: callData.callMode || "direct",
+      participantUserIds: callData.participantIds,
       callType: callData.callType,
       conversationId: callData.conversationId,
       isCaller: false,
@@ -993,6 +1154,8 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
       emitSignal("accept-call", {
         toUserId: call.peerUserId,
         roomId: call.roomId,
+        callMode: call.callMode,
+        participantIds: call.participantUserIds,
         conversationId: call.conversationId,
         callType: call.callType,
       });
@@ -1019,6 +1182,8 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
         emitSignal("reject-call", {
           toUserId: callData.callerId,
           roomId: callData.roomId,
+          callMode: callData.callMode || "direct",
+          participantIds: callData.participantIds,
           conversationId: callData.conversationId,
           callType: callData.callType,
           reason,
@@ -1042,7 +1207,13 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
       if (phase === "outgoing" || phase === "connecting") {
         emitSignal("reject-call", {
           toUserId: currentCall.peerUserId,
+          toUserIds:
+            currentCall.callMode === "group"
+              ? currentCall.participantUserIds
+              : undefined,
           roomId: currentCall.roomId,
+          callMode: currentCall.callMode,
+          participantIds: currentCall.participantUserIds,
           conversationId: currentCall.conversationId,
           callType: currentCall.callType,
           reason: "ended",
@@ -1165,6 +1336,8 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
         emitSignal("reject-call", {
           toUserId: call.callerId,
           roomId: call.roomId,
+          callMode: call.callMode || "direct",
+          participantIds: call.participantIds,
           conversationId: call.conversationId,
           callType: call.callType,
           reason: "busy",
@@ -1242,6 +1415,16 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
         (payload.rejectionReason as string | undefined) ||
         "declined";
 
+      const current = activeCallRef.current;
+      if (
+        current?.callMode === "group" &&
+        current.isCaller &&
+        (reason === "declined" || reason === "rejected" || reason === "busy")
+      ) {
+        toast.info("Một thành viên đã từ chối hoặc đang bận");
+        return;
+      }
+
       if (hasLivekitConnectedRef.current) {
         callDebug("socket:call-rejected:ignored_after_connected", {
           reason,
@@ -1302,6 +1485,8 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
 
     socketInstance.on("incoming-call", onIncomingCall);
     socketInstance.on("incomingCall", onIncomingCall);
+    socketInstance.on("incoming-group-call", onIncomingCall);
+    socketInstance.on("incomingGroupCall", onIncomingCall);
     socketInstance.on("call-accepted", onCallAccepted);
     socketInstance.on("callAccepted", onCallAccepted);
     socketInstance.on("call-rejected", onCallRejected);
@@ -1312,6 +1497,8 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
     return () => {
       socketInstance.off("incoming-call", onIncomingCall);
       socketInstance.off("incomingCall", onIncomingCall);
+      socketInstance.off("incoming-group-call", onIncomingCall);
+      socketInstance.off("incomingGroupCall", onIncomingCall);
       socketInstance.off("call-accepted", onCallAccepted);
       socketInstance.off("callAccepted", onCallAccepted);
       socketInstance.off("call-rejected", onCallRejected);
@@ -1338,6 +1525,38 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
     };
   }, [cleanupRoom, stopRingtone, stopStreams]);
 
+  const callStatusText =
+    phase === "outgoing"
+      ? "Đang đổ chuông..."
+      : phase === "active"
+        ? "Đang trong cuộc gọi"
+        : "Đang thiết lập cuộc gọi...";
+
+  const remoteAudioStreams = remoteParticipants
+    .map((participant) => participant.stream)
+    .filter((stream): stream is MediaStream => Boolean(stream));
+
+  const videoTiles =
+    activeCall?.callType === "video"
+      ? [
+          {
+            tileId: "local",
+            name: "Bạn",
+            stream: localStream,
+            hasVideo:
+              Boolean(localStream?.getVideoTracks().length) && !isCameraOff,
+            mirror: true,
+          },
+          ...remoteParticipants.map((participant) => ({
+            tileId: participant.participantId,
+            name: participant.name,
+            stream: participant.stream,
+            hasVideo: participant.hasVideo,
+            mirror: false,
+          })),
+        ]
+      : [];
+
   const contextValue = useMemo<VideoCallContextType>(
     () => ({
       phase,
@@ -1347,6 +1566,7 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
       isCameraOff,
       isBusy: phase !== "idle",
       startCall,
+      startGroupCall,
       acceptIncomingCall,
       rejectIncomingCall,
       endCall,
@@ -1363,6 +1583,7 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
       phase,
       rejectIncomingCall,
       startCall,
+      startGroupCall,
       toggleCamera,
       toggleMute,
     ],
@@ -1449,16 +1670,47 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
 
       {activeCall && phase !== "idle" && (
         <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm">
-          <AudioElement stream={remoteStream} />
-          <div className="relative w-full h-full">
-            <div className="absolute inset-0 bg-slate-900">
-              {activeCall.callType === "video" &&
-              remoteStream &&
-              remoteHasVideo ? (
-                <VideoElement
-                  stream={remoteStream}
-                  className="object-cover w-full h-full"
-                />
+          {remoteAudioStreams.map((stream, index) => (
+            <AudioElement key={`remote-audio-${index}`} stream={stream} />
+          ))}
+          <div className="relative h-full w-full">
+            <div className="absolute inset-0 bg-slate-900 p-3 pb-28 md:p-6 md:pb-32">
+              {activeCall.callType === "video" ? (
+                <div
+                  className={`grid h-full w-full gap-3 ${getVideoGridClass(
+                    videoTiles.length || 1,
+                  )}`}
+                >
+                  {videoTiles.map((tile) => (
+                    <div
+                      key={tile.tileId}
+                      className="relative min-h-0 overflow-hidden rounded-2xl border border-white/10 bg-slate-800"
+                    >
+                      {tile.hasVideo ? (
+                        <VideoElement
+                          stream={tile.stream}
+                          muted={tile.tileId === "local"}
+                          mirror={tile.mirror}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-slate-300">
+                          <div className="text-center">
+                            <p className="text-base font-semibold">{tile.name}</p>
+                            <p className="mt-1 text-xs text-slate-400">
+                              {tile.tileId === "local" && isCameraOff
+                                ? "Camera đang tắt"
+                                : "Chưa có video"}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      <div className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-1 text-xs text-white">
+                        {tile.name}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               ) : (
                 <div className="flex items-center justify-center w-full h-full text-slate-300">
                   <div className="text-center">
@@ -1466,40 +1718,32 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
                       {activeCall.peerName || "Đang kết nối..."}
                     </p>
                     <p className="mt-2 text-sm text-slate-400">
-                      {phase === "outgoing"
-                        ? "Đang đổ chuông..."
-                        : phase === "active"
-                          ? "Đang trong cuộc gọi"
-                          : "Đang thiết lập cuộc gọi..."}
+                      {callStatusText}
                     </p>
                   </div>
                 </div>
               )}
             </div>
 
-            {activeCall.callType === "video" && (
-              <div className="absolute h-40 overflow-hidden border rounded-lg shadow-xl right-4 top-4 w-28 border-white/20 bg-black/40 md:h-48 md:w-36">
-                <VideoElement
-                  stream={localStream}
-                  muted
-                  mirror
-                  className="object-cover w-full h-full"
-                />
-              </div>
-            )}
+            <div className="absolute left-4 top-4 rounded-xl bg-black/45 px-3 py-2 text-white">
+              <p className="text-sm font-semibold">
+                {activeCall.peerName || "Đang kết nối..."}
+              </p>
+              <p className="text-xs text-slate-300">{callStatusText}</p>
+            </div>
 
-            <div className="absolute px-4 py-1 text-xs text-white -translate-x-1/2 rounded-full left-1/2 top-4 bg-black/40">
+            <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-black/40 px-4 py-1 text-xs text-white">
               {Math.floor(durationSeconds / 60)
                 .toString()
                 .padStart(2, "0")}
               :{(durationSeconds % 60).toString().padStart(2, "0")}
             </div>
 
-            <div className="absolute flex items-center gap-3 -translate-x-1/2 bottom-8 left-1/2">
+            <div className="absolute bottom-8 left-1/2 flex -translate-x-1/2 items-center gap-3">
               <Button
                 variant="secondary"
                 size="icon"
-                className="w-12 h-12 rounded-full"
+                className="h-12 w-12 rounded-full"
                 onClick={toggleMute}
               >
                 {isMuted ? <MicOff /> : <Mic />}
@@ -1509,7 +1753,7 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
                 <Button
                   variant="secondary"
                   size="icon"
-                  className="w-12 h-12 rounded-full"
+                  className="h-12 w-12 rounded-full"
                   onClick={toggleCamera}
                 >
                   {isCameraOff ? <VideoOff /> : <Video />}
@@ -1519,7 +1763,7 @@ export function VideoCallProvider({ children }: { children: ReactNode }) {
               <Button
                 variant="destructive"
                 size="icon"
-                className="w-12 h-12 rounded-full"
+                className="h-12 w-12 rounded-full"
                 onClick={() => {
                   void endCall();
                 }}

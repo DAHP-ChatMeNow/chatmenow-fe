@@ -367,6 +367,7 @@ export function ChatHeader({
   const contacts = contactsData?.contacts || [];
   const blockUserMutation = useBlockUser();
   const createGroupMutation = useCreateConversation();
+  const { startCall, startGroupCall, isBusy } = useVideoCall();
   const { mutateAsync: getPrivateConversationAsync } = useGetPrivateConversation();
   const { mutateAsync: sendMessageAsync, isPending: isSendingGroupCard } = useSendMessage();
   const { startCall, isBusy } = useVideoCall();
@@ -495,6 +496,16 @@ export function ChatHeader({
     return "";
   }, [avatar, conversation, currentUserId]);
 
+  const groupCallParticipantIds = useMemo(() => {
+    if (!conversation || conversation.type !== "group" || !currentUserId) {
+      return [];
+    }
+
+    const typedConversation = conversation as ChatConversation;
+    return typedConversation.members
+      .map((member) => getMemberUserId(member))
+      .filter((id): id is string => Boolean(id) && id !== currentUserId);
+  }, [conversation, currentUserId]);
   const groupMemberIds = useMemo(() => {
     return new Set(groupMembers.map((member) => member.userId));
   }, [groupMembers]);
@@ -568,10 +579,25 @@ export function ChatHeader({
 
   const isCallEnabled = process.env.NEXT_PUBLIC_ENABLE_CALL === "true";
   const canCall =
-    isCallEnabled && conversation?.type === "private" && !!partnerId && !isBusy;
+    isCallEnabled &&
+    !isBusy &&
+    ((conversation?.type === "private" && !!partnerId) ||
+      (conversation?.type === "group" && groupCallParticipantIds.length > 0));
 
   const handleStartCall = async (callType: "audio" | "video") => {
-    if (!partnerId || !canCall) return;
+    if (!canCall || !conversation) return;
+
+    if (conversation.type === "group") {
+      await startGroupCall({
+        participantIds: groupCallParticipantIds,
+        conversationId: currentId,
+        groupName: displayName,
+        callType,
+      });
+      return;
+    }
+
+    if (!partnerId) return;
 
     await startCall({
       receiverId: partnerId,
@@ -797,7 +823,9 @@ export function ChatHeader({
                 void handleStartCall("audio");
               }}
               className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
-              title={canCall ? "Gọi audio" : "Chi ho tro trong chat ca nhan"}
+              title={
+                canCall ? "Gọi audio" : "Không thể gọi ở cuộc trò chuyện này"
+              }
             >
               <Phone className="w-5 h-5" />
             </button>
@@ -807,7 +835,9 @@ export function ChatHeader({
                 void handleStartCall("video");
               }}
               className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
-              title={canCall ? "Gọi video" : "Chi ho tro trong chat ca nhan"}
+              title={
+                canCall ? "Gọi video" : "Không thể gọi ở cuộc trò chuyện này"
+              }
             >
               <Video className="w-5 h-5" />
             </button>
@@ -1029,13 +1059,13 @@ export function ChatHeader({
               : "Tin nhắn đã ghim"
         }
       />
-          <UnreadSummaryDialog
-            open={summaryOpen}
-            onOpenChange={setSummaryOpen}
-            conversationId={currentId}
-            conversationName={displayName}
-            backgroundTheme={selectedBackground}
-          />
+      <UnreadSummaryDialog
+        open={summaryOpen}
+        onOpenChange={setSummaryOpen}
+        conversationId={currentId}
+        conversationName={displayName}
+        backgroundTheme={selectedBackground}
+      />
       <CreateGroupWithPartnerDialog
         open={groupOpen}
         onOpenChange={(o) => {
@@ -1390,7 +1420,8 @@ function MessagesSideSheet({
       const collected: CachedLinkItem[] = [];
 
       inputMessages.forEach((message, index) => {
-        const links = ((message.content || "").match(URL_REGEX) || []) as string[];
+        const links = ((message.content || "").match(URL_REGEX) ||
+          []) as string[];
         if (links.length === 0) return;
 
         const messageId = String(message.id || message._id || `m-${index}`);
@@ -1423,7 +1454,8 @@ function MessagesSideSheet({
 
     return Array.from(map.values()).sort(
       (left, right) =>
-        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+        new Date(right.createdAt).getTime() -
+        new Date(left.createdAt).getTime(),
     );
   }, [messages, cachedFiles, extractFiles]);
 
@@ -1438,7 +1470,8 @@ function MessagesSideSheet({
 
     return Array.from(map.values()).sort(
       (left, right) =>
-        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+        new Date(right.createdAt).getTime() -
+        new Date(left.createdAt).getTime(),
     );
   }, [messages, cachedLinks, extractLinks]);
 
@@ -1689,7 +1722,11 @@ function MessagesSideSheet({
                     className="w-full p-2 text-left border rounded-md transition-colors hover:bg-slate-50"
                     onClick={() => {
                       const messageId = getMessageId(m);
-                      if (!messageId || !conversationId || typeof window === "undefined") {
+                      if (
+                        !messageId ||
+                        !conversationId ||
+                        typeof window === "undefined"
+                      ) {
                         return;
                       }
 

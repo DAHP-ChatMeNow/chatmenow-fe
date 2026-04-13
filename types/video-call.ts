@@ -1,4 +1,5 @@
 export type VideoCallType = "video" | "audio";
+export type VideoCallMode = "direct" | "group";
 
 export type VideoCallStatus =
   | "initiated"
@@ -10,7 +11,11 @@ export type VideoCallStatus =
 export interface VideoCallRecord {
   id: string;
   callerId: string;
-  receiverId: string;
+  receiverId?: string;
+  callMode?: VideoCallMode;
+  participantIds?: string[];
+  acceptedParticipantIds?: string[];
+  rejectedParticipantIds?: string[];
   status: VideoCallStatus;
   callType: VideoCallType;
   conversationId?: string;
@@ -33,10 +38,12 @@ export interface VideoCallStats {
 export interface IncomingCallData {
   roomId: string;
   callId?: string;
+  callMode?: VideoCallMode;
   callerId: string;
   callerName?: string;
   callerAvatar?: string;
   receiverId?: string;
+  participantIds?: string[];
   callType: VideoCallType;
   conversationId?: string;
 }

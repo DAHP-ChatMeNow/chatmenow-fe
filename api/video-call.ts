@@ -1,5 +1,6 @@
 import api from "@/lib/axios";
 import {
+  VideoCallMode,
   VideoCallRecord,
   VideoCallStats,
   VideoCallType,
@@ -32,6 +33,10 @@ const normalizeCall = (raw: unknown): VideoCallRecord => {
     receiverId?: unknown;
     status?: VideoCallRecord["status"];
     callType?: VideoCallType;
+    callMode?: VideoCallMode;
+    participantIds?: unknown[];
+    acceptedParticipantIds?: unknown[];
+    rejectedParticipantIds?: unknown[];
     conversationId?: unknown;
     startTime?: string;
     endTime?: string;
@@ -44,7 +49,23 @@ const normalizeCall = (raw: unknown): VideoCallRecord => {
   return {
     id: source._id || source.id || "",
     callerId: toId(source.callerId) || "",
-    receiverId: toId(source.receiverId) || "",
+    receiverId: toId(source.receiverId),
+    callMode: source.callMode || "direct",
+    participantIds: Array.isArray(source.participantIds)
+      ? (source.participantIds
+          .map((id) => toId(id))
+          .filter(Boolean) as string[])
+      : undefined,
+    acceptedParticipantIds: Array.isArray(source.acceptedParticipantIds)
+      ? (source.acceptedParticipantIds
+          .map((id) => toId(id))
+          .filter(Boolean) as string[])
+      : undefined,
+    rejectedParticipantIds: Array.isArray(source.rejectedParticipantIds)
+      ? (source.rejectedParticipantIds
+          .map((id) => toId(id))
+          .filter(Boolean) as string[])
+      : undefined,
     status: source.status || "initiated",
     callType: source.callType || "video",
     conversationId: toId(source.conversationId),
@@ -108,6 +129,22 @@ export const videoCallService = {
     if (!call.id) {
       const message = toObject(res.data).message as string | undefined;
       throw new Error(message || "Initiate call response missing callId");
+    }
+
+    return call;
+  },
+
+  initiateGroup: async (data: {
+    participantIds: string[];
+    callType?: VideoCallType;
+    conversationId?: string;
+  }) => {
+    const res = await api.post("/video-calls/initiate-group", data);
+    const call = extractCall(res.data);
+
+    if (!call.id) {
+      const message = toObject(res.data).message as string | undefined;
+      throw new Error(message || "Initiate group call response missing callId");
     }
 
     return call;
