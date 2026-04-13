@@ -1,15 +1,30 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import dynamic from "next/dynamic";
 import {
   Image as ImageIcon,
   Mic,
   SendHorizontal,
   Paperclip,
   Smile,
+  Loader2,
+  Square,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+
+const EmojiPicker = dynamic(() => import("emoji-picker-react"), {
+  ssr: false,
+});
 
 interface ChatInputProps {
   onSend: (text: string) => void | Promise<void>;
@@ -17,6 +32,8 @@ interface ChatInputProps {
   isUploadingAttachments?: boolean;
   uploadProgressPercent?: number;
   uploadProgressLabel?: string;
+  replyPreview?: string;
+  onCancelReply?: () => void;
   disabled?: boolean;
   onTyping?: () => void;
   onStopTyping?: () => void;
@@ -28,12 +45,17 @@ export function ChatInput({
   isUploadingAttachments,
   uploadProgressPercent,
   uploadProgressLabel,
+  replyPreview,
+  onCancelReply,
   disabled,
   onTyping,
   onStopTyping,
 }: ChatInputProps) {
   const [value, setValue] = useState("");
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingDialogOpen, setRecordingDialogOpen] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [emojiDialogOpen, setEmojiDialogOpen] = useState(false);
   const [isSendingAttachment, setIsSendingAttachment] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -41,6 +63,8 @@ export function ChatInput({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recordedChunksRef = useRef<BlobPart[]>([]);
+  const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const discardRecordingRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -48,9 +72,28 @@ export function ChatInput({
         mediaRecorderRef.current.stop();
       }
 
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
+      }
+
       recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
       recordingStreamRef.current = null;
     };
+  }, []);
+
+  const clearRecordingState = useCallback(() => {
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+
+    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recordingStreamRef.current = null;
+    mediaRecorderRef.current = null;
+    setIsRecording(false);
+    setRecordingDialogOpen(false);
+    setRecordingSeconds(0);
   }, []);
 
   const sendAttachments = useCallback(
@@ -84,6 +127,16 @@ export function ChatInput({
     recorder.stop();
   }, []);
 
+  const cancelRecording = useCallback(() => {
+    discardRecordingRef.current = true;
+    stopRecording();
+  }, [stopRecording]);
+
+  const finishRecording = useCallback(() => {
+    discardRecordingRef.current = false;
+    stopRecording();
+  }, [stopRecording]);
+
   const startRecording = useCallback(async () => {
     if (!onSendAttachments) {
       toast.info("Tính năng gửi ghi âm chưa được bật");
@@ -110,7 +163,13 @@ export function ChatInput({
       };
 
       recorder.onstop = async () => {
-        setIsRecording(false);
+        if (recordingIntervalRef.current) {
+          clearInterval(recordingIntervalRef.current);
+          recordingIntervalRef.current = null;
+        }
+
+        const shouldDiscard = discardRecordingRef.current;
+        discardRecordingRef.current = false;
 
         const mimeType = recorder.mimeType || "audio/webm";
         const extension = mimeType.includes("ogg") ? "ogg" : "webm";
@@ -123,8 +182,11 @@ export function ChatInput({
           .forEach((track) => track.stop());
         recordingStreamRef.current = null;
         mediaRecorderRef.current = null;
+        setIsRecording(false);
+        setRecordingDialogOpen(false);
+        setRecordingSeconds(0);
 
-        if (audioBlob.size <= 0) return;
+        if (shouldDiscard || audioBlob.size <= 0) return;
 
         const audioFile = new File(
           [audioBlob],
@@ -137,19 +199,24 @@ export function ChatInput({
 
       recorder.start();
       setIsRecording(true);
+      setRecordingDialogOpen(true);
+      setRecordingSeconds(0);
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingSeconds((current) => current + 1);
+      }, 1000);
       toast.success("Đang ghi âm...");
     } catch (error) {
       console.error("startRecording error:", error);
       toast.error("Không thể bắt đầu ghi âm");
+      clearRecordingState();
     }
-  }, [onSendAttachments, sendAttachments]);
+  }, [clearRecordingState, onSendAttachments, sendAttachments]);
 
   const handleMicClick = useCallback(() => {
     if (disabled || isSendingAttachment) return;
 
     if (isRecording) {
-      stopRecording();
-      toast.info("Đang xử lý file ghi âm...");
+      setRecordingDialogOpen(true);
       return;
     }
 
@@ -159,8 +226,12 @@ export function ChatInput({
     isRecording,
     isSendingAttachment,
     startRecording,
-    stopRecording,
   ]);
+
+  const handleEmojiClick = useCallback((emojiObject: { emoji: string }) => {
+    setValue((current) => `${current}${emojiObject.emoji}`);
+    setEmojiDialogOpen(false);
+  }, []);
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -192,6 +263,25 @@ export function ChatInput({
 
   return (
     <div className="px-3 py-4 md:px-6 md:py-5 border-t border-slate-200/60 bg-white/88 backdrop-blur-xl">
+      {replyPreview && (
+        <div className="w-full max-w-[1240px] mx-auto mb-3 flex items-start justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-3 py-2.5">
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+              Đang trả lời
+            </div>
+            <div className="mt-0.5 truncate text-sm text-slate-700">{replyPreview}</div>
+          </div>
+          <button
+            type="button"
+            onClick={onCancelReply}
+            className="rounded-full p-1 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700"
+            aria-label="Hủy trả lời"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {isUploadingAttachments && (
         <div className="w-full max-w-[1240px] mx-auto mb-3">
           <div className="mb-1 flex items-center justify-between text-[11px] text-slate-500">
@@ -265,6 +355,7 @@ export function ChatInput({
           <button
             type="button"
             disabled={disabled}
+            onClick={() => setEmojiDialogOpen(true)}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-yellow-500 disabled:opacity-50"
           >
             <Smile className="w-5 h-5" />
@@ -279,6 +370,70 @@ export function ChatInput({
           <SendHorizontal className="w-5 h-5" />
         </button>
       </div>
+
+      <Dialog open={emojiDialogOpen} onOpenChange={setEmojiDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Chọn emoji</DialogTitle>
+          </DialogHeader>
+          <div className="overflow-hidden rounded-2xl border border-slate-200">
+            <EmojiPicker onEmojiClick={handleEmojiClick} width="100%" height={420} />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={recordingDialogOpen} onOpenChange={(open) => {
+        if (!open && isRecording) {
+          setRecordingDialogOpen(true);
+          return;
+        }
+        setRecordingDialogOpen(open);
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Đang ghi âm</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-3xl border border-rose-200 bg-rose-50 px-4 py-4">
+              <div className="flex items-center gap-3">
+                <span className="relative flex h-3 w-3">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
+                  <span className="relative inline-flex h-3 w-3 rounded-full bg-rose-500" />
+                </span>
+                <div className="text-sm font-medium text-rose-700">
+                  Đang thu âm giọng nói
+                </div>
+              </div>
+              <div className="mt-3 flex items-center justify-between text-sm text-rose-700">
+                <span>Thời gian</span>
+                <span className="font-semibold tabular-nums">{Math.floor(recordingSeconds / 60)}:{String(recordingSeconds % 60).padStart(2, "0")}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Bấm dừng để gửi hoặc hủy để bỏ bản ghi.
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <button
+              type="button"
+              onClick={cancelRecording}
+              className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Hủy
+            </button>
+            <button
+              type="button"
+              onClick={finishRecording}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-rose-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-rose-700"
+            >
+              <Square className="h-4 w-4" />
+              Dừng và gửi
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

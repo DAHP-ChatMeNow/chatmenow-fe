@@ -27,6 +27,7 @@ export interface Notification {
   referenced?: string | NotificationReferenced;
   metadata?: {
     requestId?: string;
+    requestType?: string;
     conversationId?: string;
     memberIds?: string[];
     status?: string;

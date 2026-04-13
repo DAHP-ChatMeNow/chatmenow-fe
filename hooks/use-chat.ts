@@ -7,9 +7,10 @@ import {
   AiConversationResponse,
   ConversationsResponse,
   MessagesResponse,
-  ConversationDetailsResponse,
   GetMessagesParams,
   SendAiMessagePayload,
+  UpdateGroupConversationPayload,
+  PinnedMessagesResponse,
 } from "@/api/chat";
 import { MessageAttachment } from "@/types/message";
 import { userService } from "@/api/user";
@@ -23,6 +24,7 @@ type SendMessageInput = {
   content: string;
   type: string;
   attachments?: MessageAttachment[];
+  replyToMessageId?: string;
 };
 
 type SendMessageContext = {
@@ -73,6 +75,7 @@ const createOptimisticMessage = (params: {
   content: string;
   type: string;
   attachments?: MessageAttachment[];
+  replyToMessageId?: string;
   currentUserId?: string;
   currentUserName: string;
   currentUserAvatar?: string;
@@ -89,6 +92,7 @@ const createOptimisticMessage = (params: {
   content: params.content,
   type: params.type,
   attachments: params.attachments,
+  replyToMessageId: params.replyToMessageId,
   createdAt: new Date().toISOString(),
   status: "sending",
   isOptimistic: true,
@@ -222,12 +226,21 @@ export const useMessages = (
   });
 };
 
+export const usePinnedMessages = (conversationId: string) => {
+  return useQuery({
+    queryKey: ["pinned-messages", conversationId],
+    queryFn: (): Promise<PinnedMessagesResponse> =>
+      chatService.getPinnedMessages(conversationId),
+    enabled: !!conversationId,
+  });
+};
+
 export const useCreateConversation = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: chatService.createConversation,
-    onSuccess: (newConversation: Conversation) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
       toast.success("Tạo cuộc trò chuyện thành công");
     },
@@ -271,6 +284,7 @@ export const useSendMessage = () => {
         content: variables.content,
         type: variables.type,
         attachments: variables.attachments,
+        replyToMessageId: variables.replyToMessageId,
         currentUserId,
         currentUserName,
         currentUserAvatar,
@@ -734,6 +748,30 @@ export const useTransferGroupAdmin = () => {
   });
 };
 
+export const useUpdateGroupConversation = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      conversationId,
+      payload,
+    }: {
+      conversationId: string;
+      payload: UpdateGroupConversationPayload;
+    }) => chatService.updateGroupConversation(conversationId, payload),
+    onSuccess: (conversation, { conversationId }) => {
+      queryClient.setQueryData(["conversation", conversationId], conversation);
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      toast.success("Đã cập nhật thông tin nhóm");
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message || "Không thể cập nhật thông tin nhóm",
+      );
+    },
+  });
+};
+
 export const useUnsendMessage = () => {
   const queryClient = useQueryClient();
 
@@ -760,6 +798,7 @@ export const useUnsendMessage = () => {
         (message) => ({
           ...message,
           content: "Tin nhắn đã được thu hồi",
+          attachments: [],
           isUnsent: true,
           unsentAt: new Date().toISOString(),
         }),
@@ -893,6 +932,54 @@ export const useEditMessage = () => {
         );
       }
       toast.error(error?.response?.data?.message || "Không thể sửa tin nhắn");
+    },
+  });
+};
+
+export const usePinMessage = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      conversationId,
+      messageId,
+    }: {
+      conversationId: string;
+      messageId: string;
+    }) => chatService.pinMessage(conversationId, messageId),
+    onSuccess: (data, { conversationId }) => {
+      queryClient.setQueryData(["pinned-messages", conversationId], data);
+      queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      toast.success("Đã ghim tin nhắn");
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || "Không thể ghim tin nhắn");
+    },
+  });
+};
+
+export const useUnpinMessage = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      conversationId,
+      messageId,
+    }: {
+      conversationId: string;
+      messageId: string;
+    }) => chatService.unpinMessage(conversationId, messageId),
+    onSuccess: (data, { conversationId }) => {
+      queryClient.setQueryData(["pinned-messages", conversationId], data);
+      queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      toast.success("Đã bỏ ghim tin nhắn");
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message || "Không thể bỏ ghim tin nhắn",
+      );
     },
   });
 };

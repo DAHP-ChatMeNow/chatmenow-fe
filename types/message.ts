@@ -26,6 +26,13 @@ export interface MessageCallInfo {
   }>;
 }
 
+export interface MessageReplyPreview {
+  content?: string;
+  type?: string;
+  attachments?: MessageAttachment[];
+  senderDisplayName?: string;
+}
+
 export type MessageStatus = "sending" | "sent" | "failed";
 export type MessageSenderSource = "user" | "ai";
 
@@ -40,6 +47,7 @@ export interface Message {
   attachments?: MessageAttachment[];
   callInfo?: MessageCallInfo;
   replyToMessageId?: string;
+  replyPreview?: MessageReplyPreview;
   readBy?: string[];
   isUnsent?: boolean;
   isEdited?: boolean;
