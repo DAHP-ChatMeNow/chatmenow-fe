@@ -373,6 +373,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
     socketInstance.on("message:updated", handleRealtimeMessageUpdated);
     socketInstance.on("message:edited", handleRealtimeMessageUpdated);
     socketInstance.on("message:unsent", handleRealtimeMessageUpdated);
+    socketInstance.on("message:reaction", handleRealtimeMessageUpdated);
     socketInstance.on("message:deleted-for-me", handleRealtimeDeletedForMe);
 
     const handleNotification = (notification: RealtimeNotificationPayload) => {
@@ -460,6 +461,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
       socketInstance.off("message:updated", handleRealtimeMessageUpdated);
       socketInstance.off("message:edited", handleRealtimeMessageUpdated);
       socketInstance.off("message:unsent", handleRealtimeMessageUpdated);
+      socketInstance.off("message:reaction", handleRealtimeMessageUpdated);
       socketInstance.off("message:deleted-for-me", handleRealtimeDeletedForMe);
       socketInstance.off("notification", handleNotification);
       socketInstance.off("notification:new");
