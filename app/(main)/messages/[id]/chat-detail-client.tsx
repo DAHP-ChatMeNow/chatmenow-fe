@@ -1734,6 +1734,54 @@ export default function ChatDetailClient() {
     };
   }, [conversationId, queryClient, socket]);
 
+  // ── Real-time reaction sync ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!socket.current || !conversationId) return;
+
+    const patchMessageInCache = (updatedMsg: any) => {
+      const msgId = String(updatedMsg?.id || updatedMsg?._id || "");
+      if (!msgId) return;
+
+      queryClient.setQueryData<MessagesResponse>(
+        ["messages", conversationId],
+        (old) => {
+          if (!old) return old;
+          return {
+            ...old,
+            messages: old.messages.map((m) => {
+              const mId = String((m as any).id || (m as any)._id || "");
+              if (mId !== msgId) return m;
+              return {
+                ...m,
+                reactions: updatedMsg.reactions ?? m.reactions,
+                isEdited: updatedMsg.isEdited ?? m.isEdited,
+                content: updatedMsg.content ?? m.content,
+                isUnsent: updatedMsg.isUnsent ?? m.isUnsent,
+                unsentAt: updatedMsg.unsentAt ?? (m as any).unsentAt,
+              };
+            }),
+          };
+        },
+      );
+    };
+
+    const handleMessageReaction = (updatedMsg: any) => {
+      patchMessageInCache(updatedMsg);
+    };
+
+    const handleMessageUpdated = (updatedMsg: any) => {
+      patchMessageInCache(updatedMsg);
+    };
+
+    socket.current.on("message:reaction", handleMessageReaction);
+    socket.current.on("message:updated", handleMessageUpdated);
+
+    return () => {
+      socket.current?.off("message:reaction", handleMessageReaction);
+      socket.current?.off("message:updated", handleMessageUpdated);
+    };
+  }, [conversationId, queryClient, socket]);
+
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as HTMLElement | null;
