@@ -9,10 +9,10 @@ import {
 import { toast } from "sonner";
 import {
   postService,
-  CreatePostPayload,
   AddCommentResult,
   PostAiChatPayload,
   AiSuggestion,
+  UpdatePostPrivacyPayload,
 } from "@/api/post";
 import { Post } from "@/types/post";
 import { Comment } from "@/types/comment";
@@ -58,6 +58,97 @@ export const useCreatePost = () => {
     },
     onError: (error: any) => {
       toast.error(error?.response?.data?.message || "Không thể đăng bài");
+    },
+  });
+};
+
+const updatePostInInfiniteCache = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  queryKey: unknown[],
+  postId: string,
+  updater: (post: Post) => Post,
+) => {
+  queryClient.setQueryData(queryKey, (oldData: any) => {
+    if (!oldData?.pages) return oldData;
+
+    return {
+      ...oldData,
+      pages: oldData.pages.map((page: any) => ({
+        ...page,
+        posts: page.posts.map((post: Post) =>
+          post.id === postId ? updater(post) : post,
+        ),
+      })),
+    };
+  });
+};
+
+const removePostFromInfiniteCache = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  queryKey: unknown[],
+  postId: string,
+) => {
+  queryClient.setQueryData(queryKey, (oldData: any) => {
+    if (!oldData?.pages) return oldData;
+
+    return {
+      ...oldData,
+      pages: oldData.pages.map((page: any) => ({
+        ...page,
+        posts: page.posts.filter((post: Post) => post.id !== postId),
+      })),
+    };
+  });
+};
+
+export const useUpdatePostPrivacy = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      postId,
+      payload,
+    }: {
+      postId: string;
+      payload: UpdatePostPrivacyPayload;
+    }) => postService.updatePostPrivacy(postId, payload),
+    onSuccess: (updatedPost) => {
+      updatePostInInfiniteCache(
+        queryClient,
+        ["posts", "feed"],
+        updatedPost.id,
+        (post) => ({ ...post, ...updatedPost }),
+      );
+      updatePostInInfiniteCache(
+        queryClient,
+        ["posts", "me"],
+        updatedPost.id,
+        (post) => ({ ...post, ...updatedPost }),
+      );
+
+      toast.success("Đã cập nhật quyền riêng tư bài viết");
+    },
+    onError: (error: any) => {
+      toast.error(
+        error?.response?.data?.message || "Không thể cập nhật quyền riêng tư",
+      );
+    },
+  });
+};
+
+export const useDeletePost = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (postId: string) => postService.deletePost(postId),
+    onSuccess: (_, postId) => {
+      removePostFromInfiniteCache(queryClient, ["posts", "feed"], postId);
+      removePostFromInfiniteCache(queryClient, ["posts", "me"], postId);
+      queryClient.removeQueries({ queryKey: ["comments", postId] });
+      toast.success("Đã xóa bài viết");
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || "Không thể xóa bài viết");
     },
   });
 };
@@ -196,7 +287,7 @@ export const usePostAiChat = () => {
       ...payload
     }: { postId: string } & PostAiChatPayload) =>
       postService.sendPostAiChat(postId, payload),
-    onSuccess: (result) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ai-conversation"] });
     },
     onError: (error: any) => {
@@ -211,6 +302,18 @@ export const useUserPosts = (userId: string | undefined) => {
   return useInfiniteQuery({
     queryKey: ["posts", "me"],
     queryFn: ({ pageParam }) => postService.getMyPosts({ pageParam }),
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore ? lastPage.nextPage : undefined,
+    initialPageParam: 1,
+    enabled: !!userId,
+  });
+};
+
+export const useProfilePosts = (userId: string | undefined) => {
+  return useInfiniteQuery({
+    queryKey: ["posts", "user", userId],
+    queryFn: ({ pageParam }) =>
+      postService.getUserPosts({ userId: userId!, pageParam }),
     getNextPageParam: (lastPage) =>
       lastPage.hasMore ? lastPage.nextPage : undefined,
     initialPageParam: 1,

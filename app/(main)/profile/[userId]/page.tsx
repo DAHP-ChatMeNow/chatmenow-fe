@@ -6,6 +6,11 @@ import {
   Loader2,
   ChevronLeft,
   MessageCircle,
+  Globe,
+  Users,
+  SlidersHorizontal,
+  Lock,
+  Heart,
   MoreHorizontal,
   Share2,
   UserPlus,
@@ -45,6 +50,10 @@ import {
   createFriendCardAttachment,
   FriendCardPayload,
 } from "@/lib/friend-card";
+import { useProfilePosts } from "@/hooks/use-post";
+import { Post, PostMedia } from "@/types/post";
+import { getPostPrivacyLabel } from "@/lib/post-privacy";
+import { PostMediaLightbox } from "@/components/post/post-media-lightbox";
 
 export default function FriendProfilePage() {
   const params = useParams();
@@ -71,9 +80,8 @@ export default function FriendProfilePage() {
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [recipientQuery, setRecipientQuery] = useState("");
 
-  const contacts = contactsData?.contacts || [];
-
   const shareTargets = useMemo(() => {
+    const contacts = contactsData?.contacts || [];
     const query = recipientQuery.trim().toLowerCase();
 
     return contacts.filter((contact) => {
@@ -90,7 +98,7 @@ export default function FriendProfilePage() {
         (contact.email || "").toLowerCase().includes(query)
       );
     });
-  }, [contacts, currentUserId, friend?.id, recipientQuery]);
+  }, [contactsData?.contacts, currentUserId, friend?.id, recipientQuery]);
 
   const statusText = useMemo(
     () =>
@@ -100,6 +108,21 @@ export default function FriendProfilePage() {
         friend?.lastSeenText,
       ),
     [friend?.isOnline, friend?.lastSeen, friend?.lastSeenText],
+  );
+  const {
+    data: profilePostsData,
+    isLoading: isLoadingProfilePosts,
+    fetchNextPage: fetchNextProfilePosts,
+    hasNextPage: hasNextProfilePosts,
+    isFetchingNextPage: isFetchingMoreProfilePosts,
+  } = useProfilePosts(friend?.id);
+
+  const profilePosts = Array.from(
+    new Map(
+      (profilePostsData?.pages.flatMap((page) => page.posts) || []).map(
+        (post) => [post.id, post],
+      ),
+    ).values(),
   );
 
   const handleOpenChat = () => {
@@ -293,6 +316,45 @@ export default function FriendProfilePage() {
                   </div>
                 </div>
               </div>
+
+              <div className="space-y-3">
+                <h3 className="px-1 text-base font-semibold text-slate-900">
+                  Bài viết
+                </h3>
+
+                {isLoadingProfilePosts ? (
+                  <div className="flex items-center justify-center rounded-2xl border border-slate-200 bg-white py-10 text-slate-500">
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Đang tải bài viết...
+                  </div>
+                ) : profilePosts.length === 0 ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
+                    Chưa có bài viết công khai để hiển thị.
+                  </div>
+                ) : (
+                  <>
+                    {profilePosts.map((post) => (
+                      <FriendProfilePostCard key={post.id} post={post} />
+                    ))}
+
+                    {isFetchingMoreProfilePosts ? (
+                      <div className="flex items-center justify-center py-3 text-slate-500">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      </div>
+                    ) : null}
+
+                    {hasNextProfilePosts ? (
+                      <button
+                        type="button"
+                        onClick={() => fetchNextProfilePosts()}
+                        className="w-full rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-semibold text-blue-600 transition-colors hover:bg-blue-50"
+                      >
+                        Xem thêm bài viết
+                      </button>
+                    ) : null}
+                  </>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -424,6 +486,227 @@ export default function FriendProfilePage() {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+const getPostPrivacyIcon = (privacy?: string, className = "h-3.5 w-3.5") => {
+  switch (privacy) {
+    case "friends":
+      return <Users className={className} />;
+    case "custom":
+      return <SlidersHorizontal className={className} />;
+    case "private":
+      return <Lock className={className} />;
+    case "public":
+    default:
+      return <Globe className={className} />;
+  }
+};
+
+function FriendProfilePostCard({ post }: { post: Post }) {
+  const likesCount = post.likesCount ?? 0;
+  const commentsCount = post.commentsCount ?? 0;
+  const hasStats = likesCount > 0 || commentsCount > 0;
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
+  return (
+    <div className="overflow-hidden bg-white border rounded-2xl border-slate-200">
+      <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+        <PresignedAvatar
+          avatarKey={post.author?.avatar}
+          displayName={post.author?.displayName}
+          className="h-10 w-10"
+        />
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-slate-900">
+            {post.author?.displayName || "Người dùng"}
+          </p>
+          <p className="flex items-center gap-1 text-[11px] text-slate-500">
+            {new Date(post.createdAt).toLocaleDateString("vi-VN", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+            <span>•</span>
+            <span className="inline-flex items-center gap-1">
+              {getPostPrivacyIcon(post.privacy)}
+              {getPostPrivacyLabel(post.privacy)}
+            </span>
+          </p>
+        </div>
+      </div>
+
+      {post.content ? (
+        <p className="px-4 pb-3 text-sm whitespace-pre-wrap text-slate-700">
+          {post.content}
+        </p>
+      ) : null}
+
+      {post.media && post.media.length > 0 ? (
+        <div className="overflow-hidden border-t border-b border-slate-100">
+          <FriendProfilePostMediaGrid
+            media={post.media}
+            onMediaClick={setLightboxIndex}
+          />
+        </div>
+      ) : null}
+
+      {post.media && lightboxIndex !== null ? (
+        <PostMediaLightbox
+          open={lightboxIndex !== null}
+          media={post.media}
+          initialIndex={lightboxIndex}
+          author={{
+            displayName: post.author?.displayName,
+            avatar: post.author?.avatar,
+          }}
+          content={post.content}
+          createdAt={post.createdAt}
+          likesCount={post.likesCount}
+          commentsCount={post.commentsCount}
+          onClose={() => setLightboxIndex(null)}
+        />
+      ) : null}
+
+      {hasStats ? (
+        <div className="flex items-center justify-between px-4 py-3 text-sm text-slate-500">
+          <span className="inline-flex items-center gap-1.5">
+            <Heart className="h-4 w-4 fill-red-400 text-red-400" />
+            {likesCount}
+          </span>
+          <span>{commentsCount} bình luận</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function FriendProfilePostMediaGrid({
+  media,
+  onMediaClick,
+}: {
+  media: PostMedia[];
+  onMediaClick?: (index: number) => void;
+}) {
+  if (!media || media.length === 0) return null;
+  const count = media.length;
+
+  const getMediaKind = (item: PostMedia): "image" | "video" => {
+    const mediaType = String(item.type || "")
+      .trim()
+      .toLowerCase();
+    const mediaUrl = String(item.url || "").toLowerCase();
+
+    const isVideoByType =
+      mediaType === "video" || mediaType.startsWith("video/");
+    const isVideoByExt = /\.(mp4|mov|avi|mkv|webm|m4v)(\?|#|$)/i.test(mediaUrl);
+
+    if (isVideoByType || isVideoByExt) return "video";
+    return "image";
+  };
+
+  const mediaEl = (item: PostMedia, index: number, cls = "") => {
+    if (getMediaKind(item) === "video") {
+      return (
+        <button
+          key={item.url}
+          type="button"
+          onClick={() => onMediaClick?.(index)}
+          className={`relative h-full w-full ${cls}`}
+          aria-label="Xem video"
+        >
+          <video
+            src={item.url}
+            muted
+            playsInline
+            preload="metadata"
+            className="pointer-events-none h-full w-full object-cover"
+          />
+          <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/45 text-sm text-white">
+              ▶
+            </span>
+          </span>
+        </button>
+      );
+    }
+    return (
+      <img
+        key={item.url}
+        src={item.url}
+        alt=""
+        onClick={() => onMediaClick?.(index)}
+        className={`h-full w-full object-cover ${cls}`}
+      />
+    );
+  };
+
+  if (count === 1)
+    return (
+      <div className="h-[500px] cursor-zoom-in overflow-hidden">
+        {mediaEl(media[0], 0)}
+      </div>
+    );
+
+  if (count === 2)
+    return (
+      <div className="grid h-[500px] grid-cols-2 gap-0.5 overflow-hidden">
+        {media.map((m, idx) => (
+          <div key={m.url} className="cursor-zoom-in overflow-hidden">
+            {mediaEl(m, idx)}
+          </div>
+        ))}
+      </div>
+    );
+
+  if (count === 3)
+    return (
+      <div className="grid h-[500px] grid-cols-2 grid-rows-2 gap-0.5 overflow-hidden">
+        <div className="col-span-2 cursor-zoom-in overflow-hidden">
+          {mediaEl(media[0], 0)}
+        </div>
+        <div className="cursor-zoom-in overflow-hidden">{mediaEl(media[1], 1)}</div>
+        <div className="cursor-zoom-in overflow-hidden">{mediaEl(media[2], 2)}</div>
+      </div>
+    );
+
+  if (count === 4)
+    return (
+      <div className="grid h-[500px] grid-cols-2 gap-0.5 overflow-hidden">
+        {media.map((m, idx) => (
+          <div key={m.url} className="cursor-zoom-in overflow-hidden">
+            {mediaEl(m, idx)}
+          </div>
+        ))}
+      </div>
+    );
+
+  const remaining = count > 5 ? count - 5 : 0;
+  return (
+    <div className="flex h-[500px] flex-col gap-0.5 overflow-hidden">
+      <div className="grid min-h-0 flex-[3] grid-cols-2 gap-0.5">
+        {media.slice(0, 2).map((m, idx) => (
+          <div key={m.url} className="cursor-zoom-in overflow-hidden">
+            {mediaEl(m, idx)}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid min-h-0 flex-[2] grid-cols-3 gap-0.5">
+        {media.slice(2, 5).map((m, i) => (
+          <div key={m.url} className="relative cursor-zoom-in overflow-hidden">
+            {mediaEl(m, i + 2)}
+            {i === 2 && remaining > 0 ? (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+                <span className="text-2xl font-bold text-white">+{remaining}</span>
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

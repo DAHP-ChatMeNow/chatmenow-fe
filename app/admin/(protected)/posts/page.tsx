@@ -6,7 +6,6 @@ import {
   adminService,
   AdminPost,
   AdminPostPrivacy,
-  AdminPostsStatsResponse,
   AdminPostSortBy,
   AdminPostSortOrder,
 } from "@/api/admin";
@@ -43,6 +42,7 @@ const PRIVACY_TABS: Array<{ label: string; value: "" | AdminPostPrivacy }> = [
   { label: "Tất cả", value: "" },
   { label: "Công khai", value: "public" },
   { label: "Bạn bè", value: "friends" },
+  { label: "Tùy chọn", value: "custom" },
   { label: "Riêng tư", value: "private" },
 ];
 
@@ -127,6 +127,12 @@ export default function AdminPostsPage() {
         return (
           <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-400">
             Bạn bè
+          </span>
+        );
+      case "custom":
+        return (
+          <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+            Tùy chọn
           </span>
         );
       case "private":
@@ -257,6 +263,9 @@ export default function AdminPostsPage() {
                   </span>
                   <span className="rounded-full bg-sky-100 px-2.5 py-1 font-semibold text-sky-700 dark:bg-sky-900/40 dark:text-sky-400">
                     Bạn bè: {privacyStats.friends || 0}
+                  </span>
+                  <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                    Tùy chọn: {privacyStats.custom || 0}
                   </span>
                   <span className="rounded-full bg-slate-200 px-2.5 py-1 font-semibold text-slate-700 dark:bg-slate-700 dark:text-slate-200">
                     Riêng tư: {privacyStats.private || 0}

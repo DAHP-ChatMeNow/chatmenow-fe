@@ -1,22 +1,29 @@
 import api from "@/lib/axios";
-import { Post } from "@/types/post";
+import { Post, PostPrivacy } from "@/types/post";
 import { Comment } from "@/types/comment";
 import { User } from "@/types/user";
 import { userService } from "@/api/user";
 
 export type CreatePostPayload = {
   content: string;
-  privacy?: "public" | "friends" | "private";
+  privacy?: PostPrivacy;
+  customAudienceIds?: string[];
   mediaFiles?: File[];
   videoDurations?: number[];
 };
 
+export type UpdatePostPrivacyPayload = {
+  privacy: PostPrivacy;
+  customAudienceIds?: string[];
+};
+
 interface BackendPost {
-  id: string;
+  id?: string;
   _id: string;
-  authorId: User;
+  authorId: User | string;
   content: string;
-  privacy: string;
+  privacy: PostPrivacy | string;
+  customAudienceIds?: Array<string | { _id?: string; id?: string }>;
   media?: Array<{ url: string; type: string; duration?: number }>;
   likesCount: number;
   commentsCount: number;
@@ -258,6 +265,35 @@ const mapComment = (c: BackendComment): Comment => ({
   updatedAt: c.updatedAt,
 });
 
+const normalizeCustomAudienceIds = (
+  value?: BackendPost["customAudienceIds"],
+): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (typeof item === "string") return item;
+      return item?._id || item?.id || "";
+    })
+    .filter(Boolean);
+};
+
+const mapBackendPost = async (post: BackendPost): Promise<Post> => ({
+  id: post._id,
+  _id: post._id,
+  authorId: (post.authorId as any)?._id || post.authorId,
+  author: typeof post.authorId === "string" ? undefined : (post.authorId as User),
+  content: post.content,
+  privacy: post.privacy,
+  customAudienceIds: normalizeCustomAudienceIds(post.customAudienceIds),
+  media: await refreshPostMediaUrls(post.media),
+  likesCount: post.likesCount || 0,
+  commentsCount: post.commentsCount || 0,
+  trendingScore: post.trendingScore || 0,
+  isLikedByCurrentUser: post.isLikedByCurrentUser || false,
+  createdAt: post.createdAt,
+  updatedAt: post.updatedAt,
+});
+
 const getFeed = async ({ pageParam = 1 }: { pageParam?: number }) => {
   const { data } = await api.get<{
     success: boolean;
@@ -272,24 +308,7 @@ const getFeed = async ({ pageParam = 1 }: { pageParam?: number }) => {
     },
   });
 
-  const posts: Post[] = await Promise.all(
-    data.posts.map(async (post) => ({
-      id: post._id,
-      _id: post._id,
-      // authorId is populated from backend, so it's an object
-      authorId: (post.authorId as any)?._id || post.authorId,
-      author: post.authorId as User,
-      content: post.content,
-      privacy: post.privacy,
-      media: await refreshPostMediaUrls(post.media),
-      likesCount: post.likesCount || 0,
-      commentsCount: post.commentsCount || 0,
-      trendingScore: post.trendingScore || 0,
-      isLikedByCurrentUser: post.isLikedByCurrentUser || false,
-      createdAt: post.createdAt,
-      updatedAt: post.updatedAt,
-    })),
-  );
+  const posts: Post[] = await Promise.all(data.posts.map(mapBackendPost));
 
   return {
     posts,
@@ -302,6 +321,12 @@ const createPost = async (payload: CreatePostPayload) => {
   const formData = new FormData();
   formData.append("content", payload.content);
   formData.append("privacy", payload.privacy || "public");
+  if (payload.customAudienceIds && payload.customAudienceIds.length > 0) {
+    formData.append(
+      "customAudienceIds",
+      JSON.stringify(payload.customAudienceIds),
+    );
+  }
 
   if (payload.mediaFiles && payload.mediaFiles.length > 0) {
     payload.mediaFiles.forEach((file) => formData.append("media", file));
@@ -312,28 +337,15 @@ const createPost = async (payload: CreatePostPayload) => {
     }
   }
 
-  const { data } = await api.post<BackendPost>("/posts", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+  const { data } = await api.post<BackendPost | { post: BackendPost }>(
+    "/posts",
+    formData,
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+    },
+  );
 
-  // Backend populates authorId, so it's an object
-  const post: Post = {
-    id: data._id,
-    _id: data._id,
-    authorId: (data.authorId as any)?._id || data.authorId,
-    author: data.authorId as User,
-    content: data.content,
-    privacy: data.privacy,
-    media: data.media,
-    likesCount: data.likesCount || 0,
-    commentsCount: data.commentsCount || 0,
-    isLikedByCurrentUser: false, // Just created post, current user hasn't liked it
-    trendingScore: data.trendingScore || 0,
-    createdAt: data.createdAt,
-    updatedAt: data.updatedAt,
-  };
-
-  return post;
+  return mapBackendPost(((data as any)?.post || data) as BackendPost);
 };
 
 const likePost = async (postId: string) => {
@@ -446,23 +458,7 @@ const getMyPosts = async ({ pageParam = 1 }: { pageParam?: number }) => {
     limit: number;
   }>("/posts/me", { params: { page: pageParam, limit: 12 } });
 
-  const posts: Post[] = await Promise.all(
-    data.posts.map(async (post) => ({
-      id: post._id,
-      _id: post._id,
-      authorId: (post.authorId as any)?._id || post.authorId,
-      author: post.authorId as User,
-      content: post.content,
-      privacy: post.privacy,
-      media: await refreshPostMediaUrls(post.media),
-      likesCount: post.likesCount || 0,
-      commentsCount: post.commentsCount || 0,
-      trendingScore: post.trendingScore || 0,
-      isLikedByCurrentUser: post.isLikedByCurrentUser || false,
-      createdAt: post.createdAt,
-      updatedAt: post.updatedAt,
-    })),
-  );
+  const posts: Post[] = await Promise.all(data.posts.map(mapBackendPost));
 
   return {
     posts,
@@ -471,13 +467,65 @@ const getMyPosts = async ({ pageParam = 1 }: { pageParam?: number }) => {
   };
 };
 
+const getUserPosts = async ({
+  userId,
+  pageParam = 1,
+}: {
+  userId: string;
+  pageParam?: number;
+}) => {
+  const { data } = await api.get<{
+    success?: boolean;
+    posts?: BackendPost[];
+    total?: number;
+    page?: number;
+    limit?: number;
+  }>(`/posts/user/${userId}`, {
+    params: { page: pageParam, limit: 10 },
+  });
+
+  const backendPosts = Array.isArray(data?.posts) ? data.posts : [];
+  const posts: Post[] = await Promise.all(backendPosts.map(mapBackendPost));
+
+  return {
+    posts,
+    hasMore: backendPosts.length === 10,
+    nextPage: pageParam + 1,
+  };
+};
+
+const updatePostPrivacy = async (
+  postId: string,
+  payload: UpdatePostPrivacyPayload,
+) => {
+  const { data } = await api.patch<BackendPost | { post: BackendPost }>(
+    `/posts/${postId}/privacy`,
+    {
+      privacy: payload.privacy,
+      customAudienceIds: payload.customAudienceIds || [],
+    },
+  );
+
+  return mapBackendPost(((data as any)?.post || data) as BackendPost);
+};
+
+const deletePost = async (postId: string) => {
+  const { data } = await api.delete<{ success?: boolean; message?: string }>(
+    `/posts/${postId}`,
+  );
+  return data;
+};
+
 export const postService = {
   getFeed,
   createPost,
+  updatePostPrivacy,
+  deletePost,
   likePost,
   unlikePost,
   getComments,
   addComment,
   sendPostAiChat,
   getMyPosts,
+  getUserPosts,
 };

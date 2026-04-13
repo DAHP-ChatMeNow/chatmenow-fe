@@ -12,6 +12,12 @@ import {
   Plus,
   X,
   Play,
+  Globe,
+  Users,
+  SlidersHorizontal,
+  Lock,
+  Check,
+  Trash2,
 } from "lucide-react";
 import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 import { Button } from "@/components/ui/button";
@@ -21,6 +27,8 @@ import { Input } from "@/components/ui/input";
 import {
   useFeed,
   useCreatePost,
+  useUpdatePostPrivacy,
+  useDeletePost,
   useLikePost,
   useComments,
   useAddComment,
@@ -34,7 +42,7 @@ import {
 } from "@/hooks/use-story";
 import { BlogSkeleton } from "@/components/skeletons/blog-skeleton";
 import { useAuthStore } from "@/store/use-auth-store";
-import { Post, PostMedia } from "@/types/post";
+import { Post, PostMedia, PostPrivacy } from "@/types/post";
 import { toast } from "sonner";
 import { PostMediaLightbox } from "@/components/post/post-media-lightbox";
 import { StoryViewer } from "@/components/post/story-viewer";
@@ -46,6 +54,16 @@ import { StoryPrivacyDialog } from "@/components/post/story-privacy-dialog";
 import { StoryPrivacy } from "@/types/story";
 import { AiSuggestion } from "@/api/post";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useContacts } from "@/hooks/use-contact";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { getPostPrivacyLabel, POST_PRIVACY_OPTIONS } from "@/lib/post-privacy";
 
 type AskAiPayload = {
   content?: string;
@@ -83,11 +101,33 @@ const getVideoDuration = (file: File): Promise<number> =>
     };
   });
 
+const getPostPrivacyIcon = (privacy?: string, className = "w-3.5 h-3.5") => {
+  switch (privacy) {
+    case "friends":
+      return <Users className={className} />;
+    case "custom":
+      return <SlidersHorizontal className={className} />;
+    case "private":
+      return <Lock className={className} />;
+    case "public":
+    default:
+      return <Globe className={className} />;
+  }
+};
+
+const normalizeId = (value?: string | { id?: string; _id?: string } | null) => {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  return value._id || value.id || "";
+};
+
 export default function BlogPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const targetPostId = searchParams.get("postId");
   const [postContent, setPostContent] = useState("");
+  const [postPrivacy, setPostPrivacy] = useState<PostPrivacy>("public");
+  const [customAudienceIds, setCustomAudienceIds] = useState<string[]>([]);
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
   const [mediaPreviews, setMediaPreviews] = useState<MediaPreview[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -117,6 +157,8 @@ export default function BlogPage() {
   const aiPendingMessageCounterRef = useRef(0);
   const user = useAuthStore((state) => state.user);
   const currentUserId = user?.id || user?._id;
+  const { data: contactsData } = useContacts();
+  const contacts = contactsData?.contacts || [];
 
   const {
     data,
@@ -128,6 +170,9 @@ export default function BlogPage() {
   } = useFeed();
 
   const { mutate: createPost, isPending: isCreatingPost } = useCreatePost();
+  const { mutate: updatePostPrivacy, isPending: isUpdatingPostPrivacy } =
+    useUpdatePostPrivacy();
+  const { mutate: deletePost, isPending: isDeletingPost } = useDeletePost();
   const { data: storyGroups = [] } = useStoryFeed();
   const { mutate: createStory, isPending: isCreatingStory } = useCreateStory();
   const { mutate: markStoryViewed } = useMarkStoryViewed();
@@ -135,6 +180,14 @@ export default function BlogPage() {
   const { mutate: likePost } = useLikePost();
   const { mutate: addComment, isPending: isAddingComment } = useAddComment();
   const { mutateAsync: askAiFromPost, isPending: isAskingAi } = usePostAiChat();
+
+  const toggleCustomAudience = (userId: string) => {
+    setCustomAudienceIds((prev) =>
+      prev.includes(userId)
+        ? prev.filter((id) => id !== userId)
+        : [...prev, userId],
+    );
+  };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(e.target.files || []);
@@ -193,6 +246,10 @@ export default function BlogPage() {
 
   const handleCreatePost = async () => {
     if (!postContent.trim() && mediaFiles.length === 0) return;
+    if (postPrivacy === "custom" && customAudienceIds.length === 0) {
+      toast.error("Bạn cần chọn ít nhất 1 người xem cho quyền Tùy chọn");
+      return;
+    }
 
     const videoDurations: number[] = [];
     for (const file of mediaFiles) {
@@ -202,16 +259,56 @@ export default function BlogPage() {
     }
 
     createPost(
-      { content: postContent, privacy: "public", mediaFiles, videoDurations },
+      {
+        content: postContent,
+        privacy: postPrivacy,
+        customAudienceIds:
+          postPrivacy === "custom" ? customAudienceIds : undefined,
+        mediaFiles,
+        videoDurations,
+      },
       {
         onSuccess: () => {
           setPostContent("");
           mediaPreviews.forEach((p) => URL.revokeObjectURL(p.url));
           setMediaFiles([]);
           setMediaPreviews([]);
+          setPostPrivacy("public");
+          setCustomAudienceIds([]);
         },
       },
     );
+  };
+
+  const handleUpdatePostPrivacy = (
+    postId: string,
+    privacy: PostPrivacy,
+    audienceIds?: string[],
+  ) => {
+    updatePostPrivacy({
+      postId,
+      payload: {
+        privacy,
+        customAudienceIds: privacy === "custom" ? audienceIds || [] : [],
+      },
+    });
+  };
+
+  const handleDeletePost = (postId: string) => {
+    if (!window.confirm("Bạn chắc chắn muốn xóa bài viết này?")) return;
+    deletePost(postId);
+  };
+
+  const handleOpenAuthorProfile = (post: Post) => {
+    const authorId = normalizeId(post.author?._id || post.author?.id || post.authorId);
+    if (!authorId) return;
+
+    if (normalizedCurrentUserId !== "" && authorId === normalizedCurrentUserId) {
+      router.push("/profile");
+      return;
+    }
+
+    router.push(`/profile/${authorId}`);
   };
 
   const openStoryPicker = () => {
@@ -459,6 +556,11 @@ export default function BlogPage() {
       (data?.pages.flatMap((page) => page.posts) || []).map((p) => [p.id, p]),
     ).values(),
   );
+  const normalizedCurrentUserId = normalizeId(currentUserId);
+  const selectedCustomAudience = contacts.filter((contact) =>
+    customAudienceIds.includes(normalizeId(contact._id || contact.id)),
+  );
+  const isPostActionPending = isUpdatingPostPrivacy || isDeletingPost;
 
   useEffect(() => {
     setPopupPostId(targetPostId);
@@ -485,21 +587,137 @@ export default function BlogPage() {
         <div className="w-full max-w-3xl min-w-0 px-0 py-0 pb-8 mx-auto space-y-4 overflow-x-hidden md:max-w-3xl md:py-6 md:px-6 lg:max-w-4xl">
           {/* Create Post */}
           <div className="p-4 space-y-4 bg-white border-0 rounded-none shadow-sm md:p-6 md:rounded-2xl md:border border-slate-100">
-            <div className="flex min-w-0 gap-3 md:gap-4">
+            <div className="flex items-start min-w-0 gap-3 md:gap-4">
               <PresignedAvatar
                 avatarKey={user?.avatar}
                 displayName={user?.displayName}
                 className="w-10 h-10 md:h-12 md:w-12 shrink-0"
                 fallbackClassName="text-sm md:text-base"
               />
-              <Textarea
-                placeholder="Bạn đang nghĩ gì thế?"
-                value={postContent}
-                onChange={(e) => setPostContent(e.target.value)}
-                disabled={isCreatingPost}
-                className="flex-1 min-w-0 border-none bg-slate-50 rounded-xl resize-none focus-visible:ring-0 min-h-[80px] md:min-h-[100px] text-sm md:text-base p-3"
-              />
+              <div className="flex-1 min-w-0 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-slate-900">
+                    {user?.displayName || "Bạn"}
+                  </p>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        disabled={isCreatingPost}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-60"
+                      >
+                        {getPostPrivacyIcon(postPrivacy, "h-3.5 w-3.5")}
+                        <span>{getPostPrivacyLabel(postPrivacy)}</span>
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      className="w-72 rounded-xl border-slate-200 bg-white p-2"
+                    >
+                      <DropdownMenuLabel className="text-xs uppercase text-slate-500">
+                        Quyền riêng tư bài viết
+                      </DropdownMenuLabel>
+                      {POST_PRIVACY_OPTIONS.map((option) => (
+                        <DropdownMenuItem
+                          key={option.value}
+                          className="flex items-start gap-2 rounded-lg py-2"
+                          onClick={() => setPostPrivacy(option.value)}
+                        >
+                          <span className="mt-0.5 text-slate-500">
+                            {getPostPrivacyIcon(option.value, "h-4 w-4")}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-medium text-slate-800">
+                              {option.label}
+                            </span>
+                            <span className="block text-xs text-slate-500">
+                              {option.description}
+                            </span>
+                          </span>
+                          {postPrivacy === option.value ? (
+                            <Check className="h-4 w-4 text-blue-600" />
+                          ) : null}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <Textarea
+                  placeholder="Bạn đang nghĩ gì thế?"
+                  value={postContent}
+                  onChange={(e) => setPostContent(e.target.value)}
+                  disabled={isCreatingPost}
+                  className="flex-1 min-w-0 border-none bg-slate-50 rounded-xl resize-none focus-visible:ring-0 min-h-[80px] md:min-h-[100px] text-sm md:text-base p-3"
+                />
+              </div>
             </div>
+
+            {postPrivacy === "custom" && (
+              <div className="space-y-2 rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+                <p className="text-xs font-semibold uppercase text-slate-500">
+                  Chọn bạn bè được xem
+                </p>
+                {contacts.length === 0 ? (
+                  <p className="text-sm text-slate-500">
+                    Bạn chưa có bạn bè để chọn quyền Tùy chọn.
+                  </p>
+                ) : (
+                  <>
+                    <div className="max-h-40 space-y-1 overflow-y-auto pr-1">
+                      {contacts.map((friend) => {
+                        const friendId = normalizeId(friend._id || friend.id);
+                        if (!friendId) return null;
+                        const checked = customAudienceIds.includes(friendId);
+                        return (
+                          <button
+                            key={friendId}
+                            type="button"
+                            onClick={() => toggleCustomAudience(friendId)}
+                            className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left transition-colors ${
+                              checked ? "bg-blue-50 text-blue-700" : "hover:bg-slate-100"
+                            }`}
+                          >
+                            <span className="flex items-center gap-2 min-w-0">
+                              <PresignedAvatar
+                                avatarKey={friend.avatar}
+                                displayName={friend.displayName}
+                                className="h-7 w-7"
+                              />
+                              <span className="truncate text-sm">
+                                {friend.displayName}
+                              </span>
+                            </span>
+                            <span
+                              className={`h-4 w-4 rounded border ${
+                                checked
+                                  ? "border-blue-600 bg-blue-600"
+                                  : "border-slate-300 bg-white"
+                              }`}
+                            >
+                              {checked ? (
+                                <Check className="h-3.5 w-3.5 text-white" />
+                              ) : null}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {selectedCustomAudience.length > 0 ? (
+                      <p className="text-xs text-slate-500">
+                        Đã chọn:{" "}
+                        {selectedCustomAudience
+                          .map((friend) => friend.displayName)
+                          .join(", ")}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-red-500">
+                        Hãy chọn ít nhất 1 người xem.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
             {/* Media Previews */}
             {mediaPreviews.length > 0 && (
               <div className="grid grid-cols-3 gap-2">
@@ -537,23 +755,25 @@ export default function BlogPage() {
             )}
 
             <div className="flex items-center justify-between pt-2 border-t border-slate-50">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-2 px-2 text-slate-500 h-9 md:h-10 md:px-4"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isCreatingPost || mediaFiles.length >= MAX_FILES}
-              >
-                <ImageIcon className="w-4 h-4 text-green-500 md:w-5 md:h-5" />
-                <span className="text-xs md:text-sm">
-                  Ảnh/Video
-                  {mediaFiles.length > 0 && (
-                    <span className="ml-1 font-semibold text-blue-500">
-                      ({mediaFiles.length})
-                    </span>
-                  )}
-                </span>
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-2 px-2 text-slate-500 h-9 md:h-10 md:px-4"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isCreatingPost || mediaFiles.length >= MAX_FILES}
+                >
+                  <ImageIcon className="w-4 h-4 text-green-500 md:w-5 md:h-5" />
+                  <span className="text-xs md:text-sm">
+                    Ảnh/Video
+                    {mediaFiles.length > 0 && (
+                      <span className="ml-1 font-semibold text-blue-500">
+                        ({mediaFiles.length})
+                      </span>
+                    )}
+                  </span>
+                </Button>
+              </div>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -566,7 +786,8 @@ export default function BlogPage() {
                 onClick={handleCreatePost}
                 disabled={
                   (!postContent.trim() && mediaFiles.length === 0) ||
-                  isCreatingPost
+                  isCreatingPost ||
+                  (postPrivacy === "custom" && customAudienceIds.length === 0)
                 }
                 className="px-4 text-xs font-semibold text-white bg-blue-600 rounded-full hover:bg-blue-700 md:px-8 h-9 md:h-10 md:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -688,6 +909,12 @@ export default function BlogPage() {
                 <ProfilePostCard
                   key={post.id}
                   post={post}
+                  canManage={
+                    normalizedCurrentUserId !== "" &&
+                    normalizeId(post.author?._id || post.author?.id || post.authorId) ===
+                      normalizedCurrentUserId
+                  }
+                  onOpenAuthorProfile={() => handleOpenAuthorProfile(post)}
                   isExpanded={expandedPostId === post.id}
                   onToggleExpand={() =>
                     setExpandedPostId(
@@ -704,6 +931,11 @@ export default function BlogPage() {
                     setCommentInputs({ ...commentInputs, [post.id]: value })
                   }
                   onAddComment={() => handleAddComment(post.id)}
+                  onUpdatePrivacy={(privacy, audienceIds) =>
+                    handleUpdatePostPrivacy(post.id, privacy, audienceIds)
+                  }
+                  onDelete={() => handleDeletePost(post.id)}
+                  isMutatingPost={isPostActionPending}
                   fallbackSuggestion={aiSuggestions[post.id]}
                   onAskAi={(askPayload) =>
                     openAiPopupWithSuggestion(post.id, askPayload)
@@ -764,6 +996,13 @@ export default function BlogPage() {
             <div className="max-h-[calc(92vh-72px)] overflow-y-auto bg-slate-50/60">
               <ProfilePostCard
                 post={popupPost}
+                canManage={
+                  normalizedCurrentUserId !== "" &&
+                  normalizeId(
+                    popupPost.author?._id || popupPost.author?.id || popupPost.authorId,
+                  ) === normalizedCurrentUserId
+                }
+                onOpenAuthorProfile={() => handleOpenAuthorProfile(popupPost)}
                 isExpanded={true}
                 onToggleExpand={() => undefined}
                 onLike={() =>
@@ -779,6 +1018,11 @@ export default function BlogPage() {
                   setCommentInputs({ ...commentInputs, [popupPost.id]: value })
                 }
                 onAddComment={() => handleAddComment(popupPost.id)}
+                onUpdatePrivacy={(privacy, audienceIds) =>
+                  handleUpdatePostPrivacy(popupPost.id, privacy, audienceIds)
+                }
+                onDelete={() => handleDeletePost(popupPost.id)}
+                isMutatingPost={isPostActionPending}
                 fallbackSuggestion={aiSuggestions[popupPost.id]}
                 onAskAi={(askPayload) =>
                   openAiPopupWithSuggestion(popupPost.id, askPayload)
@@ -831,6 +1075,8 @@ export default function BlogPage() {
 
 interface ProfilePostCardProps {
   post: Post;
+  canManage: boolean;
+  onOpenAuthorProfile: () => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
   onLike: () => void;
@@ -839,6 +1085,9 @@ interface ProfilePostCardProps {
   commentInput: string;
   onCommentInputChange: (val: string) => void;
   onAddComment: () => void;
+  onUpdatePrivacy: (privacy: PostPrivacy, audienceIds?: string[]) => void;
+  onDelete: () => void;
+  isMutatingPost: boolean;
   fallbackSuggestion?: AiSuggestion;
   onAskAi: (payload?: AskAiPayload) => void;
   isAskingAi: boolean;
@@ -984,6 +1233,8 @@ function PostMediaGrid({
 
 function ProfilePostCard({
   post,
+  canManage,
+  onOpenAuthorProfile,
   isExpanded,
   onToggleExpand,
   onLike,
@@ -992,6 +1243,9 @@ function ProfilePostCard({
   commentInput,
   onCommentInputChange,
   onAddComment,
+  onUpdatePrivacy,
+  onDelete,
+  isMutatingPost,
   fallbackSuggestion,
   onAskAi,
   isAskingAi,
@@ -1006,11 +1260,19 @@ function ProfilePostCard({
   const likesCount = post.likesCount ?? 0;
   const commentsCount = post.commentsCount ?? 0;
   const hasStats = likesCount > 0 || commentsCount > 0;
+  const privacyMenuOptions = POST_PRIVACY_OPTIONS.filter(
+    (option) =>
+      option.value !== "custom" || (post.customAudienceIds || []).length > 0,
+  );
 
   return (
     <div className="w-full min-w-0 overflow-hidden bg-white border-0 rounded-none shadow-sm md:rounded-2xl md:border border-slate-100">
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
-        <div className="flex items-center flex-1 min-w-0 gap-3">
+        <button
+          type="button"
+          onClick={onOpenAuthorProfile}
+          className="flex items-center flex-1 min-w-0 gap-3 text-left transition-opacity hover:opacity-90"
+        >
           <PresignedAvatar
             avatarKey={post.author?.avatar}
             displayName={post.author?.displayName}
@@ -1020,7 +1282,7 @@ function ProfilePostCard({
             <p className="text-sm font-semibold leading-tight truncate text-slate-900">
               {post.author?.displayName || "User"}
             </p>
-            <p className="text-[11px] text-slate-400">
+            <p className="flex items-center gap-1 text-[11px] text-slate-400">
               {new Date(post.createdAt).toLocaleDateString("vi-VN", {
                 day: "2-digit",
                 month: "2-digit",
@@ -1028,12 +1290,75 @@ function ProfilePostCard({
                 hour: "2-digit",
                 minute: "2-digit",
               })}
+              <span>•</span>
+              <span className="inline-flex items-center gap-1 text-slate-500">
+                {getPostPrivacyIcon(post.privacy, "h-3 w-3")}
+                {getPostPrivacyLabel(post.privacy)}
+              </span>
             </p>
           </div>
-        </div>
-        <button className="p-2 transition-colors rounded-full hover:bg-slate-100">
-          <MoreHorizontal className="w-5 h-5 text-slate-500" />
         </button>
+        {canManage ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="p-2 transition-colors rounded-full hover:bg-slate-100">
+                <MoreHorizontal className="w-5 h-5 text-slate-500" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="w-64 rounded-xl border-slate-200 bg-white p-2"
+            >
+              <DropdownMenuLabel className="text-xs uppercase text-slate-500">
+                Quyền riêng tư
+              </DropdownMenuLabel>
+              {privacyMenuOptions.map((option) => {
+                const isCurrent = post.privacy === option.value;
+                return (
+                  <DropdownMenuItem
+                    key={option.value}
+                    className="flex items-start gap-2 rounded-lg py-2"
+                    disabled={isCurrent || isMutatingPost}
+                    onClick={() =>
+                      onUpdatePrivacy(
+                        option.value,
+                        option.value === "custom"
+                          ? post.customAudienceIds
+                          : undefined,
+                      )
+                    }
+                  >
+                    <span className="mt-0.5 text-slate-500">
+                      {getPostPrivacyIcon(option.value, "h-4 w-4")}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-slate-800">
+                        {option.label}
+                      </span>
+                      <span className="block text-xs text-slate-500">
+                        {option.description}
+                      </span>
+                    </span>
+                    {isCurrent ? <Check className="h-4 w-4 text-blue-600" /> : null}
+                  </DropdownMenuItem>
+                );
+              })}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="rounded-lg text-red-600 focus:bg-red-50 focus:text-red-600"
+                disabled={isMutatingPost}
+                onClick={onDelete}
+              >
+                <Trash2 className="h-4 w-4" />
+                Xóa bài viết
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <button className="p-2 rounded-full">
+            <MoreHorizontal className="w-5 h-5 text-slate-300" />
+          </button>
+        )}
       </div>
 
       {post.content && (

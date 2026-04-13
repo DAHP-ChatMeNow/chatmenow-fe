@@ -1,11 +1,12 @@
 "use client";
 
-import { MessageCircle, Loader, UserCircle2 } from "lucide-react";
+import { useState } from "react";
+import { MessageCircle, Loader, UserCircle2, UserMinus } from "lucide-react";
 import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 import { Button } from "@/components/ui/button";
 import { User } from "@/types/user";
 import { useRouter } from "next/navigation";
-import { useBlockedUsers } from "@/hooks/use-contact";
+import { useBlockedUsers, useRemoveFriend } from "@/hooks/use-contact";
 import { useGetPrivateConversation } from "@/hooks/use-chat";
 import { formatPresenceStatus } from "@/lib/utils";
 
@@ -21,11 +22,14 @@ export function FriendsList({
   searchQuery = "",
 }: FriendsListProps) {
   const router = useRouter();
+  const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null);
   const { data: blockedUsersData } = useBlockedUsers();
+  const { mutate: removeFriend, isPending: isRemovingFriend } = useRemoveFriend();
   const { mutate: getPrivateConversation } = useGetPrivateConversation();
   const blockedIdSet = new Set(
     (blockedUsersData?.blockedUsers || []).map((user) => user.id || user._id),
   );
+  const normalizeUserId = (user: User) => user.id || user._id || "";
 
   const filteredFriends = friends.filter((friend) =>
     friend.displayName.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -42,6 +46,18 @@ export function FriendsList({
 
   const handleViewProfile = (friendId: string) => {
     router.push(`/profile/${friendId}`);
+  };
+
+  const handleRemoveFriend = (friendId: string) => {
+    if (!friendId) return;
+    if (!window.confirm("Bạn có chắc chắn muốn xóa bạn này không?")) return;
+
+    setPendingRemoveId(friendId);
+    removeFriend(friendId, {
+      onSettled: () => {
+        setPendingRemoveId(null);
+      },
+    });
   };
 
   if (isLoading) {
@@ -62,9 +78,15 @@ export function FriendsList({
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-      {filteredFriends.map((friend) => (
+      {filteredFriends.map((friend) => {
+        const friendId = normalizeUserId(friend);
+        if (!friendId) return null;
+        const isRemovingThisFriend =
+          isRemovingFriend && pendingRemoveId === friendId;
+
+        return (
         <div
-          key={friend.id}
+          key={friendId}
           className="p-3 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all group"
         >
           <div className="flex items-start justify-between mb-2">
@@ -79,7 +101,7 @@ export function FriendsList({
                 size="sm"
                 variant="ghost"
                 className="h-7 w-7 p-0"
-                onClick={() => handleViewProfile(friend.id)}
+                onClick={() => handleViewProfile(friendId)}
                 title="Xem thông tin cá nhân"
               >
                 <UserCircle2 className="w-4 h-4 text-slate-600" />
@@ -88,10 +110,24 @@ export function FriendsList({
                 size="sm"
                 variant="ghost"
                 className="h-7 w-7 p-0"
-                onClick={() => handleMessageFriend(friend.id)}
+                onClick={() => handleMessageFriend(friendId)}
                 title="Nhắn tin"
               >
                 <MessageCircle className="w-4 h-4 text-blue-600" />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0"
+                onClick={() => handleRemoveFriend(friendId)}
+                title="Xóa bạn"
+                disabled={isRemovingThisFriend}
+              >
+                {isRemovingThisFriend ? (
+                  <Loader className="w-4 h-4 animate-spin text-red-500" />
+                ) : (
+                  <UserMinus className="w-4 h-4 text-red-500" />
+                )}
               </Button>
             </div>
           </div>
@@ -99,7 +135,7 @@ export function FriendsList({
             <p className="font-semibold text-sm text-slate-900 truncate">
               {friend.displayName}
             </p>
-            {blockedIdSet.has(friend.id) && (
+            {blockedIdSet.has(friendId) && (
               <span className="px-1.5 py-0.5 text-[10px] font-semibold text-white bg-red-500 rounded-full shrink-0">
                 Chặn
               </span>
@@ -114,13 +150,14 @@ export function FriendsList({
           </p>
           <button
             type="button"
-            onClick={() => handleViewProfile(friend.id)}
+            onClick={() => handleViewProfile(friendId)}
             className="mt-1 text-[11px] font-medium text-slate-500 hover:text-blue-600"
           >
             Xem thông tin cá nhân
           </button>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

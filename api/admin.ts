@@ -224,6 +224,7 @@ export interface AdminPostsStatsResponse {
   privacyStats?: {
     public?: number;
     friends?: number;
+    custom?: number;
     private?: number;
   };
   postsPerDay?: Array<{
@@ -270,7 +271,7 @@ export interface AdminPostCommentsResponse {
   limit: number;
 }
 
-export type AdminPostPrivacy = "public" | "friends" | "private";
+export type AdminPostPrivacy = "public" | "friends" | "custom" | "private";
 export type AdminPostSortBy = "createdAt" | "likesCount" | "commentsCount";
 export type AdminPostSortOrder = "asc" | "desc";
 
@@ -401,6 +402,7 @@ const getPostStats = async (days: number = 30) => {
       data?.privacyStats ?? {
       public: 0,
       friends: 0,
+      custom: 0,
       private: 0,
     },
     postsPerDay: stats.postsPerDay ?? data?.postsPerDay ?? [],

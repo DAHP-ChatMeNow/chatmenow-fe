@@ -1,5 +1,7 @@
 import { User } from './user';
 
+export type PostPrivacy = "public" | "friends" | "custom" | "private";
+
 export interface PostMedia {
   url: string;
   type: string;
@@ -12,7 +14,8 @@ export interface Post {
   authorId: string;
   author?: User; 
   content: string;
-  privacy: string;
+  privacy: PostPrivacy | string;
+  customAudienceIds?: string[];
   media?: PostMedia[];
   likesCount: number;
   commentsCount: number;

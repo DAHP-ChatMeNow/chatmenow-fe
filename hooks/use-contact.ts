@@ -10,11 +10,12 @@ import { useAuthStore } from "@/store/use-auth-store";
 
 export const useContacts = () => {
   const user = useAuthStore((state) => state.user);
+  const userId = user?._id || user?.id || "";
   return useQuery({
-    queryKey: ["contacts", user?._id],
+    queryKey: ["contacts", userId],
     queryFn: (): Promise<ContactsResponse> =>
-      contactService.getContacts(user?._id || ""),
-    enabled: !!user?._id,
+      contactService.getContacts(userId),
+    enabled: !!userId,
     refetchOnWindowFocus: false, // ❌ Tắt auto-refetch khi focus tab
     staleTime: 5 * 60 * 1000, // 5 phút - cho phép invalidate work
   });
