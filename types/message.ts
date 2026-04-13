@@ -18,6 +18,12 @@ export interface MessageCallInfo {
   duration?: number;
   startedAt?: string | Date;
   endedAt?: string | Date;
+  participants?: Array<{
+    userId?: string;
+    displayName?: string;
+    avatar?: string;
+    joinedAt?: string | Date;
+  }>;
 }
 
 export type MessageStatus = "sending" | "sent" | "failed";

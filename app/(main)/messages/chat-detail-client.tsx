@@ -59,17 +59,49 @@ const normalizeCallStatus = (msg: Message): string => {
   if (status) return status;
 
   const text = (msg.content || "").toLowerCase();
-  if (text === "ended" || text === "rejected" || text === "missed") {
+  if (
+    text === "ended" ||
+    text === "rejected" ||
+    text === "missed" ||
+    text === "accepted"
+  ) {
     return text;
   }
 
+  if (text.includes("tham gia cuộc gọi") || text.includes("tham gia cuoc goi")) {
+    return "accepted";
+  }
   if (text.includes("nhỡ") || text.includes("nho")) return "missed";
   if (text.includes("từ chối") || text.includes("tu choi")) return "rejected";
   return "ended";
 };
 
+const isSystemCallMessage = (msg: Message): boolean => {
+  if (msg.callInfo?.status) return true;
+
+  const text = String(msg.content || "").trim().toLowerCase();
+  if (!text) return false;
+
+  return (
+    text === "ended" ||
+    text === "rejected" ||
+    text === "missed" ||
+    text === "accepted" ||
+    text.includes("cuộc gọi") ||
+    text.includes("cuoc goi")
+  );
+};
+
 const getSystemCallStyle = (status: string) => {
   const text = status.toLowerCase();
+
+  if (text.includes("accepted")) {
+    return {
+      Icon: PhoneCall,
+      iconClass: "bg-emerald-100 text-emerald-600",
+      bubbleClass: "border-emerald-100",
+    };
+  }
 
   if (text.includes("nhỡ") || text.includes("nho")) {
     return {
@@ -97,6 +129,7 @@ const getSystemCallStyle = (status: string) => {
 const getSystemCallTitle = (status: string) => {
   const text = status.toLowerCase();
 
+  if (text.includes("accepted")) return "Đã tham gia cuộc gọi";
   if (text.includes("missed")) return "Cuộc gọi nhỡ";
   if (text.includes("rejected")) return "Cuộc gọi bị từ chối";
   return "Cuộc gọi kết thúc";
@@ -406,6 +439,9 @@ const resolveTypeFromFile = (file: File): string => {
 };
 
 const getSystemCallDescription = (msg: Message, status: string) => {
+  if (status === "accepted") {
+    return msg.content || "Một thành viên đã tham gia cuộc gọi";
+  }
   if (status === "missed") return "Không được trả lời";
   if (status === "rejected") return "Cuộc gọi đã bị từ chối";
 
@@ -1026,6 +1062,19 @@ export default function ChatDetailClient({
                       );
                     }
 
+                    if (!isSystemCallMessage(msg)) {
+                      return (
+                        <div
+                          key={msg.id || msg._id}
+                          className="flex justify-center"
+                        >
+                          <div className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
+                            {msg.content || "Thông báo hệ thống"}
+                          </div>
+                        </div>
+                      );
+                    }
+
                     const callStatus = normalizeCallStatus(msg);
                     const callStyle = getSystemCallStyle(callStatus);
                     const callTitle = getSystemCallTitle(callStatus);
@@ -1033,6 +1082,7 @@ export default function ChatDetailClient({
                       msg,
                       callStatus,
                     );
+                    const participants = msg.callInfo?.participants || [];
                     const systemSenderId = getMessageSenderId(msg);
                     const isMySystemMessage =
                       !!systemSenderId && systemSenderId === currentUserId;
@@ -1086,6 +1136,37 @@ export default function ChatDetailClient({
                           >
                             {getSystemCallTime(msg)}
                           </p>
+                          {callStatus === "ended" && participants.length > 0 && (
+                            <div className="mt-2 flex items-center gap-2">
+                              <div className="flex -space-x-2">
+                                {participants.slice(0, 5).map((participant, index) => {
+                                  const participantLabel =
+                                    participant.displayName || `User ${index + 1}`;
+
+                                  return (
+                                    <PresignedAvatar
+                                      key={`${participant.userId || participantLabel}-${index}`}
+                                      avatarKey={participant.avatar}
+                                      displayName={participantLabel}
+                                      className="h-6 w-6 border-2 border-white"
+                                      fallbackClassName="bg-slate-300 text-slate-700 text-[10px]"
+                                    />
+                                  );
+                                })}
+                              </div>
+                              {participants.length > 5 && (
+                                <span
+                                  className={`text-[10px] ${
+                                    isMySystemMessage
+                                      ? "text-blue-100"
+                                      : "text-slate-500"
+                                  }`}
+                                >
+                                  +{participants.length - 5}
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         {isMySystemMessage && (
