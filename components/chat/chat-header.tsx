@@ -87,9 +87,7 @@ import { useCreateConversation } from "@/hooks/use-chat";
 import { useVideoCall } from "@/components/providers/video-call-provider";
 import { Conversation, ConversationMember } from "@/types/conversation";
 import { Message, MessageAttachment } from "@/types/message";
-import {
-  FRIEND_CARD_ATTACHMENT_TYPE,
-} from "@/lib/friend-card";
+import { FRIEND_CARD_ATTACHMENT_TYPE } from "@/lib/friend-card";
 import {
   createGroupCardAttachment,
   type GroupCardPayload,
@@ -161,27 +159,27 @@ function GroupMemberCard({
   const canSendFriendRequest = !isFriend && !isCheckingFriend;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm">
+    <div className="px-3 py-3 bg-white border shadow-sm rounded-2xl border-slate-200">
       <div className="flex items-start justify-between gap-3">
         <button
           type="button"
           onClick={() => router.push(`/profile/${member.userId}`)}
-          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+          className="flex items-center flex-1 min-w-0 gap-3 text-left"
         >
           {member.avatar ? (
             <img
               src={member.avatar}
               alt={member.displayName}
-              className="h-10 w-10 rounded-full object-cover"
+              className="object-cover w-10 h-10 rounded-full"
             />
           ) : (
-            <div className="h-10 w-10 rounded-full bg-slate-200" />
+            <div className="w-10 h-10 rounded-full bg-slate-200" />
           )}
           <div className="min-w-0">
-            <div className="truncate text-sm font-medium text-slate-900">
+            <div className="text-sm font-medium truncate text-slate-900">
               {member.displayName}
             </div>
-            <div className="text-xs text-slate-500 capitalize">
+            <div className="text-xs capitalize text-slate-500">
               {member.role === "admin" ? "Admin" : "Thành viên"}
             </div>
           </div>
@@ -209,14 +207,14 @@ function GroupMemberCard({
         )}
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 mt-3">
         <Button
           type="button"
           size="sm"
           variant="outline"
           onClick={() => router.push(`/profile/${member.userId}`)}
         >
-          <UserCircle2 className="mr-2 h-4 w-4" />
+          <UserCircle2 className="w-4 h-4 mr-2" />
           Xem profile
         </Button>
         {canSendFriendRequest && (
@@ -232,7 +230,7 @@ function GroupMemberCard({
             }
             disabled={isSendingFriendRequest}
           >
-            <UserPlus className="mr-2 h-4 w-4" />
+            <UserPlus className="w-4 h-4 mr-2" />
             {isSendingFriendRequest ? "Đang gửi..." : "Kết bạn"}
           </Button>
         )}
@@ -368,9 +366,10 @@ export function ChatHeader({
   const blockUserMutation = useBlockUser();
   const createGroupMutation = useCreateConversation();
   const { startCall, startGroupCall, isBusy } = useVideoCall();
-  const { mutateAsync: getPrivateConversationAsync } = useGetPrivateConversation();
-  const { mutateAsync: sendMessageAsync, isPending: isSendingGroupCard } = useSendMessage();
-  const { startCall, isBusy } = useVideoCall();
+  const { mutateAsync: getPrivateConversationAsync } =
+    useGetPrivateConversation();
+  const { mutateAsync: sendMessageAsync, isPending: isSendingGroupCard } =
+    useSendMessage();
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetTab, setSheetTab] = useState<"assets" | "search" | "pinned">(
@@ -394,7 +393,9 @@ export function ChatHeader({
     useState(false);
   const [groupShareOpen, setGroupShareOpen] = useState(false);
   const [groupCardRecipientQuery, setGroupCardRecipientQuery] = useState("");
-  const [groupCardRecipientIds, setGroupCardRecipientIds] = useState<string[]>([]);
+  const [groupCardRecipientIds, setGroupCardRecipientIds] = useState<string[]>(
+    [],
+  );
   const [backgroundOpen, setBackgroundOpen] = useState(false);
   const [selectedBackground, setSelectedBackground] =
     useState<ChatBackgroundKey>("default");
@@ -528,8 +529,9 @@ export function ChatHeader({
             : notification.referenced?.id || notification.referenced?._id;
 
         const metadataConversationId = notification.metadata?.conversationId;
-        const targetConversationId =
-          String(metadataConversationId || referencedConversationId || "");
+        const targetConversationId = String(
+          metadataConversationId || referencedConversationId || "",
+        );
 
         return targetConversationId === String(currentId);
       })
@@ -548,7 +550,11 @@ export function ChatHeader({
   const inviteContacts = useMemo(() => {
     return contacts.filter((contact) => {
       const contactId = contact._id || contact.id;
-      return Boolean(contactId) && contactId !== currentUserId && !groupMemberIds.has(contactId);
+      return (
+        Boolean(contactId) &&
+        contactId !== currentUserId &&
+        !groupMemberIds.has(contactId)
+      );
     });
   }, [contacts, currentUserId, groupMemberIds]);
 
@@ -575,7 +581,13 @@ export function ChatHeader({
       memberCount: conversation?.members?.length || groupMembers.length + 1,
       profileUrl: `/messages/${currentId}`,
     };
-  }, [conversation?.members?.length, currentId, displayName, groupMembers.length, headerAvatarKey]);
+  }, [
+    conversation?.members?.length,
+    currentId,
+    displayName,
+    groupMembers.length,
+    headerAvatarKey,
+  ]);
 
   const isCallEnabled = process.env.NEXT_PUBLIC_ENABLE_CALL === "true";
   const canCall =
@@ -683,8 +695,12 @@ export function ChatHeader({
     setGroupDrawerTab(tab);
     setGroupDraftName(conversation?.name || displayName || "");
     setGroupDraftAvatarKey(conversation?.groupAvatar || "");
-    setGroupDraftPinManagementEnabled(Boolean(conversation?.pinManagementEnabled));
-    setGroupDraftJoinApprovalEnabled(Boolean(conversation?.joinApprovalEnabled));
+    setGroupDraftPinManagementEnabled(
+      Boolean(conversation?.pinManagementEnabled),
+    );
+    setGroupDraftJoinApprovalEnabled(
+      Boolean(conversation?.joinApprovalEnabled),
+    );
     setGroupDrawerOpen(true);
   };
 
@@ -743,7 +759,8 @@ export function ChatHeader({
     try {
       await Promise.all(
         groupCardRecipientIds.map(async (recipientId) => {
-          const privateConversation = await getPrivateConversationAsync(recipientId);
+          const privateConversation =
+            await getPrivateConversationAsync(recipientId);
           const privateConversationId = String(
             privateConversation?.id || privateConversation?._id || "",
           );
@@ -767,12 +784,12 @@ export function ChatHeader({
       setGroupShareOpen(false);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Không thể gửi danh thiếp nhóm",
+        error instanceof Error
+          ? error.message
+          : "Không thể gửi danh thiếp nhóm",
       );
     }
   };
-
-
 
   return (
     <>
@@ -872,7 +889,8 @@ export function ChatHeader({
                     setSheetOpen(true);
                   }}
                 >
-                  <FileText className="text-slate-500" /> Xem ảnh/tệp/link đã gửi
+                  <FileText className="text-slate-500" /> Xem ảnh/tệp/link đã
+                  gửi
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   className="h-10 rounded-lg px-3 text-[15px] font-medium text-slate-700"
@@ -903,7 +921,8 @@ export function ChatHeader({
                     className="h-10 rounded-lg px-3 text-[15px] font-medium text-slate-700"
                     onClick={() => setInviteOpen(true)}
                   >
-                    <UserPlus className="text-slate-500" /> Thêm thành viên vào nhóm
+                    <UserPlus className="text-slate-500" /> Thêm thành viên vào
+                    nhóm
                   </DropdownMenuItem>
                 )}
                 {conversation?.type === "group" && (
@@ -984,7 +1003,9 @@ export function ChatHeader({
 
                     <DropdownMenuItem
                       className="h-10 rounded-lg px-3 text-[15px] font-medium text-slate-700"
-                      onClick={() => openGroupDrawer(isAdmin ? "info" : "members")}
+                      onClick={() =>
+                        openGroupDrawer(isAdmin ? "info" : "members")
+                      }
                     >
                       <UserPlus className="text-slate-500" />
                       {isAdmin ? "Quản lý nhóm" : "Xem thành viên nhóm"}
@@ -1011,7 +1032,7 @@ export function ChatHeader({
             <button
               type="button"
               onClick={handleFocusLatestPinnedMessage}
-              className="min-w-0 flex-1 rounded-xl border border-amber-200 bg-white/80 px-3 py-2 text-left transition hover:bg-white"
+              className="flex-1 min-w-0 px-3 py-2 text-left transition border rounded-xl border-amber-200 bg-white/80 hover:bg-white"
             >
               <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
                 <Pin className="h-3.5 w-3.5" />
@@ -1392,22 +1413,24 @@ function MessagesSideSheet({
         const messageId = String(message.id || message._id || `m-${index}`);
         const createdAt = normalizeDateString(message.createdAt);
 
-        (message.attachments || []).forEach((attachment: MessageAttachment, attachmentIndex: number) => {
-          if (attachment.fileType === FRIEND_CARD_ATTACHMENT_TYPE) {
-            return;
-          }
+        (message.attachments || []).forEach(
+          (attachment: MessageAttachment, attachmentIndex: number) => {
+            if (attachment.fileType === FRIEND_CARD_ATTACHMENT_TYPE) {
+              return;
+            }
 
-          const source = attachment.key || attachment.url || "";
-          if (!source) return;
+            const source = attachment.key || attachment.url || "";
+            if (!source) return;
 
-          collected.push({
-            id: `${messageId}-${attachmentIndex}-${source}`,
-            source,
-            fileType: attachment.fileType,
-            fileName: attachment.fileName,
-            createdAt,
-          });
-        });
+            collected.push({
+              id: `${messageId}-${attachmentIndex}-${source}`,
+              source,
+              fileType: attachment.fileType,
+              fileName: attachment.fileName,
+              createdAt,
+            });
+          },
+        );
       });
 
       return collected;
@@ -1440,7 +1463,6 @@ function MessagesSideSheet({
     },
     [normalizeDateString],
   );
-
 
   const fileMsgs = useMemo(() => {
     const fromCurrentMessages = extractFiles(messages);
@@ -1477,7 +1499,9 @@ function MessagesSideSheet({
 
   const isImageAsset = useCallback((item: CachedFileItem) => {
     const normalizedType = String(item.fileType || "").toLowerCase();
-    const normalizedName = String(item.fileName || item.source || "").toLowerCase();
+    const normalizedName = String(
+      item.fileName || item.source || "",
+    ).toLowerCase();
     return (
       normalizedType.startsWith("image/") ||
       [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"].some((ext) =>
@@ -1554,7 +1578,7 @@ function MessagesSideSheet({
           </div>
         )}
         {tab === "assets" && (
-          <div className="mt-3 flex items-center gap-2">
+          <div className="flex items-center gap-2 mt-3">
             <button
               type="button"
               className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -1592,9 +1616,11 @@ function MessagesSideSheet({
         )}
         <ScrollArea className="mt-4 h-[70vh]">
           {tab === "pinned" && (
-            <div className="space-y-2 pr-3">
+            <div className="pr-3 space-y-2">
               {pinnedItems.length === 0 ? (
-                <div className="text-sm text-slate-500">Chưa có tin nhắn ghim</div>
+                <div className="text-sm text-slate-500">
+                  Chưa có tin nhắn ghim
+                </div>
               ) : (
                 pinnedItems.map((item) => {
                   const message = item.message;
@@ -1605,13 +1631,17 @@ function MessagesSideSheet({
                   return (
                     <div
                       key={`${messageId}-${item.pinnedAt || ""}`}
-                      className="rounded-md border p-2"
+                      className="p-2 border rounded-md"
                     >
                       <button
                         type="button"
                         className="w-full text-left"
                         onClick={() => {
-                          if (!messageId || !conversationId || typeof window === "undefined") {
+                          if (
+                            !messageId ||
+                            !conversationId ||
+                            typeof window === "undefined"
+                          ) {
                             return;
                           }
 
@@ -1631,16 +1661,21 @@ function MessagesSideSheet({
                           {getPinnedPreview(item)}
                         </div>
                         <div className="mt-1 text-xs text-slate-500">
-                          Ghim lúc {new Date(item.pinnedAt || Date.now()).toLocaleString()}
+                          Ghim lúc{" "}
+                          {new Date(
+                            item.pinnedAt || Date.now(),
+                          ).toLocaleString()}
                         </div>
                       </button>
                       {canManagePinned && (
-                        <div className="mt-2 flex justify-end">
+                        <div className="flex justify-end mt-2">
                           <Button
                             type="button"
                             size="sm"
                             variant="outline"
-                            disabled={isUnpinning || !conversationId || !messageId}
+                            disabled={
+                              isUnpinning || !conversationId || !messageId
+                            }
                             onClick={() => {
                               if (!conversationId || !messageId) return;
                               unpinMessage({ conversationId, messageId });
@@ -1657,7 +1692,7 @@ function MessagesSideSheet({
             </div>
           )}
           {tab === "assets" && (
-            <div className="space-y-2 pr-3">
+            <div className="pr-3 space-y-2">
               {assetView === "images" &&
                 (imageItems.length === 0 ? (
                   <div className="text-sm text-slate-500">Chưa có ảnh nào</div>
@@ -1719,7 +1754,7 @@ function MessagesSideSheet({
                   <button
                     key={m.id || idx}
                     type="button"
-                    className="w-full p-2 text-left border rounded-md transition-colors hover:bg-slate-50"
+                    className="w-full p-2 text-left transition-colors border rounded-md hover:bg-slate-50"
                     onClick={() => {
                       const messageId = getMessageId(m);
                       if (
@@ -1794,7 +1829,7 @@ function FilePreview({
 
   if (!resolvedSrc) {
     return (
-      <div className="flex items-center justify-center w-full h-24 rounded-2xl border border-slate-200 bg-slate-50 text-xs text-slate-400">
+      <div className="flex items-center justify-center w-full h-24 text-xs border rounded-2xl border-slate-200 bg-slate-50 text-slate-400">
         Đang tải...
       </div>
     );
@@ -1806,7 +1841,7 @@ function FilePreview({
         <img
           src={resolvedSrc}
           alt={fileName || "image"}
-          className="h-24 w-full rounded-2xl border border-slate-200 object-cover"
+          className="object-cover w-full h-24 border rounded-2xl border-slate-200"
           loading="lazy"
         />
       </a>
@@ -1819,13 +1854,15 @@ function FilePreview({
         href={resolvedSrc}
         target="_blank"
         rel="noreferrer"
-        className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm"
+        className="flex items-center gap-3 px-3 py-3 bg-white border shadow-sm rounded-2xl border-slate-200"
       >
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
-          <Sparkles className="h-4 w-4" />
+        <div className="flex items-center justify-center w-10 h-10 rounded-full bg-emerald-100 text-emerald-700">
+          <Sparkles className="w-4 h-4" />
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium text-slate-900">{fileName || "Tệp âm thanh"}</div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium truncate text-slate-900">
+            {fileName || "Tệp âm thanh"}
+          </div>
           <div className="text-xs text-slate-500">Audio</div>
         </div>
       </a>
@@ -1835,7 +1872,11 @@ function FilePreview({
   if (isVideo) {
     return (
       <a href={resolvedSrc} target="_blank" rel="noreferrer" className="block">
-        <video controls src={resolvedSrc} className="h-32 w-full rounded-2xl border border-slate-200 bg-black" />
+        <video
+          controls
+          src={resolvedSrc}
+          className="w-full h-32 bg-black border rounded-2xl border-slate-200"
+        />
       </a>
     );
   }
@@ -1845,13 +1886,13 @@ function FilePreview({
       href={resolvedSrc}
       target="_blank"
       rel="noreferrer"
-      className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm"
+      className="flex items-center gap-3 px-3 py-3 bg-white border shadow-sm rounded-2xl border-slate-200"
     >
-      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-700">
-        <FileText className="h-4 w-4" />
+      <div className="flex items-center justify-center w-10 h-10 text-blue-700 bg-blue-100 rounded-full">
+        <FileText className="w-4 h-4" />
       </div>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-slate-900">
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium truncate text-slate-900">
           {fileName || "Tệp đính kèm"}
         </div>
         <div className="text-xs text-slate-500">{fileType || "File"}</div>
@@ -2114,8 +2155,8 @@ function GroupShareDialog({
         </DialogHeader>
 
         <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
-          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-center justify-center rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="p-4 border rounded-3xl border-slate-200 bg-slate-50">
+            <div className="flex items-center justify-center p-4 bg-white border rounded-2xl border-slate-200">
               {shareUrl ? (
                 <QRCodeCanvas value={shareUrl} size={168} includeMargin />
               ) : (
@@ -2126,18 +2167,29 @@ function GroupShareDialog({
             </div>
 
             <div className="mt-3 space-y-3">
-              <Button type="button" className="w-full" onClick={onShareLink} disabled={!shareUrl}>
-                <Share2 className="mr-2 h-4 w-4" />
+              <Button
+                type="button"
+                className="w-full"
+                onClick={onShareLink}
+                disabled={!shareUrl}
+              >
+                <Share2 className="w-4 h-4 mr-2" />
                 Chia sẻ link
               </Button>
-              <Button type="button" variant="outline" className="w-full" onClick={onCopyLink} disabled={!shareUrl}>
-                <Copy className="mr-2 h-4 w-4" />
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={onCopyLink}
+                disabled={!shareUrl}
+              >
+                <Copy className="w-4 h-4 mr-2" />
                 Sao chép link
               </Button>
             </div>
 
             {groupCardPayload && (
-              <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="p-3 mt-4 bg-white border shadow-sm rounded-2xl border-slate-200">
                 <div className="flex items-center gap-3">
                   <PresignedAvatar
                     avatarKey={groupCardPayload.avatar}
@@ -2145,8 +2197,8 @@ function GroupShareDialog({
                     className="h-11 w-11"
                     fallbackClassName="bg-gradient-to-br from-blue-500 to-cyan-500 text-white"
                   />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold text-slate-900">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold truncate text-slate-900">
                       {groupCardPayload.displayName}
                     </div>
                     <div className="text-xs text-slate-500">
@@ -2154,8 +2206,9 @@ function GroupShareDialog({
                     </div>
                   </div>
                 </div>
-                <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                  Danh thiếp nhóm có thể gửi cho người khác để mở nhanh cuộc trò chuyện.
+                <div className="px-3 py-2 mt-3 text-xs rounded-xl bg-slate-50 text-slate-500">
+                  Danh thiếp nhóm có thể gửi cho người khác để mở nhanh cuộc trò
+                  chuyện.
                 </div>
               </div>
             )}
@@ -2167,7 +2220,8 @@ function GroupShareDialog({
                 Gửi danh thiếp nhóm
               </div>
               <div className="mt-2 text-xs text-slate-500">
-                Chọn 1 hoặc nhiều liên hệ để gửi card nhóm vào cuộc trò chuyện riêng.
+                Chọn 1 hoặc nhiều liên hệ để gửi card nhóm vào cuộc trò chuyện
+                riêng.
               </div>
             </div>
 
@@ -2175,13 +2229,13 @@ function GroupShareDialog({
               value={recipientQuery}
               onChange={(event) => onRecipientQueryChange(event.target.value)}
               placeholder="Tìm liên hệ..."
-              className="h-11 rounded-2xl border-slate-200 bg-white"
+              className="bg-white h-11 rounded-2xl border-slate-200"
             />
 
             <ScrollArea className="h-[280px] rounded-2xl border border-slate-200 bg-white">
-              <div className="space-y-1 p-2">
+              <div className="p-2 space-y-1">
                 {filteredContacts.length === 0 ? (
-                  <div className="px-3 py-8 text-center text-sm text-slate-500">
+                  <div className="px-3 py-8 text-sm text-center text-slate-500">
                     Không có liên hệ phù hợp
                   </div>
                 ) : (
@@ -2197,7 +2251,7 @@ function GroupShareDialog({
                       >
                         <input
                           type="checkbox"
-                          className="h-4 w-4"
+                          className="w-4 h-4"
                           checked={checked}
                           onChange={(event) => {
                             setSelectedIds((prev) =>
@@ -2211,16 +2265,16 @@ function GroupShareDialog({
                           <img
                             src={contact.avatar}
                             alt={contact.displayName}
-                            className="h-9 w-9 rounded-full object-cover"
+                            className="object-cover rounded-full h-9 w-9"
                           />
                         ) : (
-                          <div className="h-9 w-9 rounded-full bg-slate-200" />
+                          <div className="rounded-full h-9 w-9 bg-slate-200" />
                         )}
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium text-slate-900">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium truncate text-slate-900">
                             {contact.displayName}
                           </div>
-                          <div className="truncate text-xs text-slate-500">
+                          <div className="text-xs truncate text-slate-500">
                             {contact.email || "Liên hệ"}
                           </div>
                         </div>
@@ -2241,16 +2295,20 @@ function GroupShareDialog({
               </Button>
               <Button
                 onClick={onSendGroupCard}
-                disabled={selectedIds.length === 0 || sendingGroupCard || !groupCardPayload}
+                disabled={
+                  selectedIds.length === 0 ||
+                  sendingGroupCard ||
+                  !groupCardPayload
+                }
               >
                 {sendingGroupCard ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Đang gửi...
                   </>
                 ) : (
                   <>
-                    <Send className="mr-2 h-4 w-4" />
+                    <Send className="w-4 h-4 mr-2" />
                     Gửi danh thiếp
                   </>
                 )}
@@ -2327,7 +2385,9 @@ function GroupSettingsDrawer({
   removing: boolean;
 }) {
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
-  const [confirmTransferId, setConfirmTransferId] = useState<string | null>(null);
+  const [confirmTransferId, setConfirmTransferId] = useState<string | null>(
+    null,
+  );
   const [memberQuery, setMemberQuery] = useState("");
   const [avatarUploading, setAvatarUploading] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
@@ -2351,7 +2411,9 @@ function GroupSettingsDrawer({
 
   const pendingJoinRequestCount = pendingJoinRequests.length;
 
-  const handlePickAvatar = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePickAvatar = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
@@ -2387,9 +2449,10 @@ function GroupSettingsDrawer({
         typeof error === "object" &&
         error !== null &&
         "response" in error &&
-        typeof (error as { response?: { data?: { message?: string } } }).response
-          ?.data?.message === "string"
-          ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+        typeof (error as { response?: { data?: { message?: string } } })
+          .response?.data?.message === "string"
+          ? (error as { response?: { data?: { message?: string } } }).response
+              ?.data?.message
           : "Không thể cập nhật avatar nhóm";
       toast.error(message);
     } finally {
@@ -2414,34 +2477,37 @@ function GroupSettingsDrawer({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-xl overflow-hidden p-0">
-        <div className="flex h-full flex-col">
-          <SheetHeader className="border-b border-slate-200/80 px-5 py-4 text-left">
+      <SheetContent
+        side="right"
+        className="w-full p-0 overflow-hidden sm:max-w-xl"
+      >
+        <div className="flex flex-col h-full">
+          <SheetHeader className="px-5 py-4 text-left border-b border-slate-200/80">
             <SheetTitle className="text-xl">Thông tin nhóm</SheetTitle>
             <SheetDescription>
               Chỉnh tên, avatar và quản lý thành viên theo kiểu drawer.
             </SheetDescription>
           </SheetHeader>
 
-          <div className="border-b border-slate-200/80 px-5 py-4">
+          <div className="px-5 py-4 border-b border-slate-200/80">
             <div className="flex items-center gap-4">
               <div className="relative">
                 <PresignedAvatar
                   avatarKey={draftAvatarKey}
                   displayName={draftName || "Nhóm"}
-                  className="h-16 w-16 border border-slate-200 shadow-sm"
+                  className="w-16 h-16 border shadow-sm border-slate-200"
                   fallbackClassName="bg-gradient-to-br from-blue-500 to-cyan-500 text-white font-semibold"
                 />
                 {avatarUploading && (
-                  <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-white">
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="absolute inset-0 flex items-center justify-center text-white rounded-full bg-black/40">
+                    <Loader2 className="w-4 h-4 animate-spin" />
                   </span>
                 )}
               </div>
 
-              <div className="min-w-0 flex-1 space-y-1">
+              <div className="flex-1 min-w-0 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="text-lg font-semibold text-slate-900 truncate">
+                  <div className="text-lg font-semibold truncate text-slate-900">
                     {draftName || "Nhóm"}
                   </div>
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600">
@@ -2455,7 +2521,7 @@ function GroupSettingsDrawer({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 border-b border-slate-200/80 px-5 py-3">
+          <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-200/80">
             <button
               type="button"
               onClick={() => onTabChange("info")}
@@ -2488,10 +2554,10 @@ function GroupSettingsDrawer({
           </div>
 
           <ScrollArea className="flex-1">
-            <div className="space-y-5 px-5 py-4">
+            <div className="px-5 py-4 space-y-5">
               {activeTab === "info" ? (
                 <div className="space-y-5">
-                  <div className="rounded-3xl border border-slate-200/80 bg-slate-50 p-4">
+                  <div className="p-4 border rounded-3xl border-slate-200/80 bg-slate-50">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className="text-sm font-semibold text-slate-900">
@@ -2508,7 +2574,7 @@ function GroupSettingsDrawer({
                         onClick={() => avatarInputRef.current?.click()}
                         disabled={!isAdmin || avatarUploading}
                       >
-                        <Upload className="mr-2 h-4 w-4" />
+                        <Upload className="w-4 h-4 mr-2" />
                         Đổi ảnh
                       </Button>
                     </div>
@@ -2527,14 +2593,16 @@ function GroupSettingsDrawer({
                     </label>
                     <Input
                       value={draftName}
-                      onChange={(event) => onDraftNameChange(event.target.value)}
+                      onChange={(event) =>
+                        onDraftNameChange(event.target.value)
+                      }
                       placeholder="Nhập tên nhóm"
                       disabled={!isAdmin}
-                      className="h-11 rounded-2xl border-slate-200 bg-white"
+                      className="bg-white h-11 rounded-2xl border-slate-200"
                     />
                   </div>
 
-                  <div className="rounded-3xl border border-slate-200/80 bg-slate-50 p-4">
+                  <div className="p-4 border rounded-3xl border-slate-200/80 bg-slate-50">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className="text-sm font-semibold text-slate-900">
@@ -2546,11 +2614,15 @@ function GroupSettingsDrawer({
                       </div>
                       <Button
                         type="button"
-                        variant={draftPinManagementEnabled ? "default" : "outline"}
+                        variant={
+                          draftPinManagementEnabled ? "default" : "outline"
+                        }
                         size="sm"
                         disabled={!isAdmin || savingGroupInfo}
                         onClick={() =>
-                          onDraftPinManagementEnabledChange(!draftPinManagementEnabled)
+                          onDraftPinManagementEnabledChange(
+                            !draftPinManagementEnabled,
+                          )
                         }
                       >
                         {draftPinManagementEnabled ? "Bật" : "Tắt"}
@@ -2558,23 +2630,28 @@ function GroupSettingsDrawer({
                     </div>
                   </div>
 
-                  <div className="rounded-3xl border border-slate-200/80 bg-slate-50 p-4">
+                  <div className="p-4 border rounded-3xl border-slate-200/80 bg-slate-50">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className="text-sm font-semibold text-slate-900">
                           Duyệt thành viên vào nhóm
                         </div>
                         <div className="text-xs text-slate-500">
-                          Bật để thành viên mới cần admin duyệt trước khi vào nhóm.
+                          Bật để thành viên mới cần admin duyệt trước khi vào
+                          nhóm.
                         </div>
                       </div>
                       <Button
                         type="button"
-                        variant={draftJoinApprovalEnabled ? "default" : "outline"}
+                        variant={
+                          draftJoinApprovalEnabled ? "default" : "outline"
+                        }
                         size="sm"
                         disabled={!isAdmin || savingGroupInfo}
                         onClick={() =>
-                          onDraftJoinApprovalEnabledChange(!draftJoinApprovalEnabled)
+                          onDraftJoinApprovalEnabledChange(
+                            !draftJoinApprovalEnabled,
+                          )
                         }
                       >
                         {draftJoinApprovalEnabled ? "Bật" : "Tắt"}
@@ -2583,7 +2660,7 @@ function GroupSettingsDrawer({
                   </div>
 
                   {isAdmin && pendingJoinRequestCount > 0 && (
-                    <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4">
+                    <div className="p-4 border rounded-3xl border-amber-200 bg-amber-50">
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <div className="text-sm font-semibold text-amber-900">
@@ -2614,12 +2691,12 @@ function GroupSettingsDrawer({
                     >
                       {savingGroupInfo ? (
                         <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                           Đang lưu...
                         </>
                       ) : (
                         <>
-                          <Save className="mr-2 h-4 w-4" />
+                          <Save className="w-4 h-4 mr-2" />
                           Lưu thay đổi
                         </>
                       )}
@@ -2634,7 +2711,7 @@ function GroupSettingsDrawer({
               ) : (
                 <div className="space-y-3">
                   {isAdmin && (
-                    <div className="rounded-3xl border border-blue-200 bg-blue-50 p-4 space-y-3">
+                    <div className="p-4 space-y-3 border border-blue-200 rounded-3xl bg-blue-50">
                       <div className="text-sm font-semibold text-blue-900">
                         Duyệt thành viên vào nhóm
                       </div>
@@ -2647,11 +2724,11 @@ function GroupSettingsDrawer({
                           {pendingJoinRequests.map((request) => (
                             <div
                               key={request.notificationId}
-                              className="rounded-2xl border border-blue-200/70 bg-white px-3 py-2"
+                              className="px-3 py-2 bg-white border rounded-2xl border-blue-200/70"
                             >
                               <div className="flex items-center justify-between gap-3">
                                 <div className="min-w-0">
-                                  <div className="truncate text-sm font-medium text-slate-900">
+                                  <div className="text-sm font-medium truncate text-slate-900">
                                     {request.requesterName}
                                   </div>
                                   <div className="text-xs text-slate-500">
@@ -2663,7 +2740,9 @@ function GroupSettingsDrawer({
                                 <Button
                                   type="button"
                                   size="sm"
-                                  onClick={() => onApproveJoinRequest(request.notificationId)}
+                                  onClick={() =>
+                                    onApproveJoinRequest(request.notificationId)
+                                  }
                                   disabled={approvingRequest}
                                 >
                                   {approvingRequest ? "Đang duyệt..." : "Duyệt"}
@@ -2676,7 +2755,7 @@ function GroupSettingsDrawer({
                     </div>
                   )}
 
-                  <div className="rounded-3xl border border-slate-200/80 bg-slate-50 p-4 space-y-3">
+                  <div className="p-4 space-y-3 border rounded-3xl border-slate-200/80 bg-slate-50">
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                       <Button
                         type="button"
@@ -2685,7 +2764,7 @@ function GroupSettingsDrawer({
                         onClick={onInviteByLink}
                         className="justify-center"
                       >
-                        <Copy className="mr-2 h-4 w-4" />
+                        <Copy className="w-4 h-4 mr-2" />
                         Mời bằng link
                       </Button>
                       {canInviteMembers && (
@@ -2695,7 +2774,7 @@ function GroupSettingsDrawer({
                           onClick={onInviteMembers}
                           className="justify-center"
                         >
-                          <UserPlus className="mr-2 h-4 w-4" />
+                          <UserPlus className="w-4 h-4 mr-2" />
                           Mời bạn bè
                         </Button>
                       )}
@@ -2706,7 +2785,7 @@ function GroupSettingsDrawer({
                         onClick={onOpenShareGroup}
                         className="justify-center"
                       >
-                        <Share2 className="mr-2 h-4 w-4" />
+                        <Share2 className="w-4 h-4 mr-2" />
                         Chia sẻ QR
                       </Button>
                     </div>
@@ -2714,12 +2793,12 @@ function GroupSettingsDrawer({
                       value={memberQuery}
                       onChange={(event) => setMemberQuery(event.target.value)}
                       placeholder="Tìm thành viên..."
-                      className="h-10 rounded-2xl border-slate-200 bg-white"
+                      className="h-10 bg-white rounded-2xl border-slate-200"
                     />
                   </div>
 
                   {filteredMembers.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                    <div className="px-4 py-5 text-sm border border-dashed rounded-2xl border-slate-200 bg-slate-50 text-slate-500">
                       Không có thành viên khác
                     </div>
                   ) : (
@@ -2728,8 +2807,12 @@ function GroupSettingsDrawer({
                         <GroupMemberCard
                           member={member}
                           isAdmin={isAdmin}
-                          onTransferAdmin={(memberId) => setConfirmTransferId(memberId)}
-                          onRemoveMember={(memberId) => setConfirmRemoveId(memberId)}
+                          onTransferAdmin={(memberId) =>
+                            setConfirmTransferId(memberId)
+                          }
+                          onRemoveMember={(memberId) =>
+                            setConfirmRemoveId(memberId)
+                          }
                           transferring={transferring}
                           removing={removing}
                         />
@@ -2738,7 +2821,7 @@ function GroupSettingsDrawer({
                   )}
 
                   {confirmTransferId && (
-                    <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                    <div className="p-4 border border-blue-200 rounded-2xl bg-blue-50">
                       <p className="mb-3 text-sm text-blue-800">
                         Chuyển quyền admin cho thành viên này?
                       </p>
@@ -2766,7 +2849,7 @@ function GroupSettingsDrawer({
                   )}
 
                   {confirmRemoveId && (
-                    <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                    <div className="p-4 border border-red-200 rounded-2xl bg-red-50">
                       <p className="mb-3 text-sm text-red-800">
                         Xóa thành viên này khỏi nhóm?
                       </p>
