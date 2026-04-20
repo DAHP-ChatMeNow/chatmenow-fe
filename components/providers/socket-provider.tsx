@@ -468,6 +468,30 @@ export function SocketProvider({ children }: SocketProviderProps) {
     socketInstance.on("message:deleted-for-me", handleRealtimeDeletedForMe);
     socketInstance.on("conversation:pinned-updated", handlePinnedMessagesUpdated);
 
+    const handlePollUpdated = (payload: { messageId?: string; poll?: any }) => {
+      if (!payload?.messageId || !payload?.poll) return;
+
+      queryClient.setQueriesData<MessagesResponse | undefined>(
+        { queryKey: ["messages"] },
+        (oldData) => {
+          if (!oldData?.messages?.length) return oldData;
+
+          return {
+            ...oldData,
+            messages: oldData.messages.map((msg) => {
+              const msgId = msg.id || msg._id;
+              if (msgId === payload.messageId) {
+                return { ...msg, poll: payload.poll };
+              }
+              return msg;
+            }),
+          };
+        },
+      );
+    };
+
+    socketInstance.on("poll:updated", handlePollUpdated);
+
     const handleNotification = (notification: RealtimeNotificationPayload) => {
       queryClient.setQueryData<NotificationsResponse | undefined>(
         ["notifications"],
@@ -556,6 +580,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
       socketInstance.off("message:reaction", handleRealtimeMessageUpdated);
       socketInstance.off("message:deleted-for-me", handleRealtimeDeletedForMe);
       socketInstance.off("conversation:pinned-updated", handlePinnedMessagesUpdated);
+      socketInstance.off("poll:updated", handlePollUpdated);
       socketInstance.off("notification", handleNotification);
       socketInstance.off("notification:new");
       socketInstance.off("user:presence", handleUserPresence);

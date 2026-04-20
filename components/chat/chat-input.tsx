@@ -11,6 +11,7 @@ import {
   Loader2,
   Square,
   X,
+  BarChart2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,7 @@ interface ChatInputProps {
   disabled?: boolean;
   onTyping?: () => void;
   onStopTyping?: () => void;
+  onOpenPollDialog?: () => void;
 }
 
 export function ChatInput({
@@ -50,6 +52,7 @@ export function ChatInput({
   disabled,
   onTyping,
   onStopTyping,
+  onOpenPollDialog,
 }: ChatInputProps) {
   const [value, setValue] = useState("");
   const [isRecording, setIsRecording] = useState(false);
@@ -312,10 +315,19 @@ export function ChatInput({
           <button
             disabled={disabled}
             onClick={() => fileInputRef.current?.click()}
-            className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed hidden sm:block"
           >
             <Paperclip className="w-5 h-5" />
           </button>
+          {onOpenPollDialog && (
+            <button
+              disabled={disabled}
+              onClick={onOpenPollDialog}
+              className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed hidden sm:block"
+            >
+              <BarChart2 className="w-5 h-5" />
+            </button>
+          )}
           <button
             disabled={disabled || isSendingAttachment}
             onClick={handleMicClick}

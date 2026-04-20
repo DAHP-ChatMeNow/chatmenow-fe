@@ -53,6 +53,39 @@ export interface MessageReaction {
 export type MessageStatus = "sending" | "sent" | "failed";
 export type MessageSenderSource = "user" | "ai";
 
+// ─── Poll types ───────────────────────────────────────────────────────────────
+export interface PollVoter {
+  userId: string;
+  votedAt?: string | Date;
+}
+
+export interface PollOption {
+  _id: string;
+  text: string;
+  voteCount: number | null;  // null when hidden before vote
+  votedByMe: boolean;
+  voters: PollVoter[];
+}
+
+export interface Poll {
+  _id: string;
+  conversationId: string;
+  messageId: string | null;
+  createdBy: string;
+  question: string;
+  options: PollOption[];
+  totalVotes: number | null;
+  allowMultipleChoices: boolean;
+  allowAddOptions: boolean;
+  hideResultsBeforeVote: boolean;
+  hideVoters: boolean;
+  deadline: string | Date | null;
+  isClosed: boolean;
+  userHasVoted: boolean;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+}
+
 export interface Message {
   id: string;
   conversationId: string;
@@ -75,6 +108,8 @@ export interface Message {
   unsentAt?: Date | string;
   deletedFor?: string[];
   musicInfo?: MessageMusicInfo;
+  poll?: Poll | null;
+  pollId?: string;
   createdAt: Date | string;
   clientTempId?: string;
   status?: MessageStatus;
