@@ -25,6 +25,7 @@ import {
   LogOut,
   Sparkles,
   FileText,
+  Pencil,
   Pin,
   Save,
   Loader2,
@@ -138,6 +139,107 @@ type GroupJoinRequestView = {
   createdAt?: string | Date;
 };
 
+type GroupAvatarMemberView = {
+  userId: string;
+  displayName: string;
+  avatar?: string;
+};
+
+function GroupAvatarTile({
+  member,
+  className,
+}: {
+  member: GroupAvatarMemberView;
+  className?: string;
+}) {
+  return (
+    <PresignedAvatar
+      avatarKey={member.avatar}
+      displayName={member.displayName}
+      className={className}
+      fallbackClassName="font-semibold text-[10px] text-white bg-gradient-to-br from-blue-400 to-cyan-500"
+    />
+  );
+}
+
+function GroupCompositeAvatar({
+  members,
+  totalCount,
+  className,
+}: {
+  members: GroupAvatarMemberView[];
+  totalCount: number;
+  className?: string;
+}) {
+  const visibleMembers = members.slice(0, 4);
+  const hasTriangleLayout = totalCount === 3 && visibleMembers.length >= 3;
+  const hasSquareLayout = totalCount >= 4 && visibleMembers.length >= 4;
+  const extraCount = Math.max(totalCount - 3, 0);
+  const badgeText = extraCount > 99 ? "99+" : `+${extraCount}`;
+
+  return (
+    <div
+      className={`relative overflow-hidden rounded-full border-2 border-white bg-slate-100 shadow-lg ring-1 ring-slate-100 ${className ?? ""}`}
+    >
+      {hasTriangleLayout ? (
+        <div className="absolute inset-0">
+          <div className="absolute left-1/2 top-[6%] h-[46%] w-[46%] -translate-x-1/2">
+            <GroupAvatarTile
+              member={visibleMembers[0]}
+              className="h-full w-full border-2 border-white shadow-sm"
+            />
+          </div>
+          <div className="absolute left-[8%] top-[48%] h-[46%] w-[46%]">
+            <GroupAvatarTile
+              member={visibleMembers[1]}
+              className="h-full w-full border-2 border-white shadow-sm"
+            />
+          </div>
+          <div className="absolute right-[8%] top-[48%] h-[46%] w-[46%]">
+            <GroupAvatarTile
+              member={visibleMembers[2]}
+              className="h-full w-full border-2 border-white shadow-sm"
+            />
+          </div>
+        </div>
+      ) : hasSquareLayout ? (
+        <div className="absolute inset-0">
+          {visibleMembers.map((member, index) => (
+            totalCount >= 5 && index === 3 ? (
+              <span
+                key="group-extra-count"
+                className="absolute right-[6%] bottom-[8%] flex h-[45%] w-[45%] items-center justify-center rounded-md bg-slate-600 text-[11px] font-bold text-white shadow-sm"
+              >
+                {badgeText}
+              </span>
+            ) : (
+              <GroupAvatarTile
+                key={member.userId}
+                member={member}
+                className={`absolute h-[45%] w-[45%] border-2 border-white shadow-sm ${
+                  index === 0
+                    ? "left-[6%] top-[8%]"
+                    : index === 1
+                      ? "right-[6%] top-[8%]"
+                      : index === 2
+                        ? "left-[6%] bottom-[8%]"
+                        : "right-[6%] bottom-[8%]"
+                }`}
+              />
+            )
+          ))}
+        </div>
+      ) : (
+        <GroupAvatarTile
+          member={visibleMembers[0] ?? { userId: "group", displayName: "G" }}
+          className="h-full w-full"
+        />
+      )}
+
+    </div>
+  );
+}
+
 function GroupMemberCard({
   member,
   isAdmin,
@@ -163,82 +265,89 @@ function GroupMemberCard({
   const canSendFriendRequest = !isFriend && !isCheckingFriend;
 
   return (
-    <div className="px-3 py-3 bg-white border shadow-sm rounded-2xl border-slate-200">
-      <div className="flex items-start justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => router.push(`/profile/${member.userId}`)}
-          className="flex items-center flex-1 min-w-0 gap-3 text-left"
-        >
-          {member.avatar ? (
-            <img
-              src={member.avatar}
-              alt={member.displayName}
-              className="object-cover w-10 h-10 rounded-full"
-            />
-          ) : (
-            <div className="w-10 h-10 rounded-full bg-slate-200" />
-          )}
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => router.push(`/profile/${member.userId}`)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          void router.push(`/profile/${member.userId}`);
+        }
+      }}
+      className="px-3 py-2.5 bg-white border shadow-sm rounded-2xl border-slate-200 cursor-pointer transition-colors hover:bg-slate-50"
+    >
+      <div className="flex items-center justify-between gap-2.5">
+        <div className="flex items-center flex-1 min-w-0 gap-2.5 text-left">
+          <PresignedAvatar
+            avatarKey={member.avatar}
+            displayName={member.displayName}
+            className="w-9 h-9"
+            fallbackClassName="font-semibold text-white"
+          />
           <div className="min-w-0">
-            <div className="text-sm font-medium truncate text-slate-900">
+            <div className="text-sm font-medium leading-tight truncate text-slate-900">
               {member.displayName}
             </div>
-            <div className="text-xs capitalize text-slate-500">
+            <div className="text-xs leading-tight capitalize text-slate-500">
               {member.role === "admin" ? "Admin" : "Thành viên"}
             </div>
           </div>
-        </button>
+        </div>
 
         {isAdmin && member.role !== "admin" && (
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onTransferAdmin(member.userId)}
-              disabled={transferring || removing}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="icon"
+                variant="outline"
+                className="w-7 h-7 rounded-full border-slate-300 bg-white shadow-sm hover:bg-slate-100"
+                disabled={transferring || removing}
+                aria-label={`Tùy chọn thành viên ${member.displayName}`}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <MoreVertical className="w-3.5 h-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              sideOffset={8}
+              className="z-[70] w-44 border border-slate-200 bg-white shadow-xl"
             >
-              Chuyển admin
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={() => onRemoveMember(member.userId)}
-              disabled={removing || transferring}
-            >
-              Xóa
-            </Button>
-          </div>
+              <DropdownMenuItem onClick={() => onTransferAdmin(member.userId)}>
+                Chuyển admin
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-red-600 focus:text-red-600"
+                onClick={() => onRemoveMember(member.userId)}
+              >
+                Xóa
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2 mt-3">
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => router.push(`/profile/${member.userId}`)}
-        >
-          <UserCircle2 className="w-4 h-4 mr-2" />
-          Xem profile
-        </Button>
-        {canSendFriendRequest && (
+      {canSendFriendRequest && (
+        <div className="flex flex-wrap gap-2 mt-2">
           <Button
             type="button"
             size="sm"
-            onClick={() =>
+            onClick={(event) => {
+              event.stopPropagation();
               sendFriendRequest(member.userId, {
                 onSuccess: () => {
                   void router.push(`/profile/${member.userId}`);
                 },
-              })
-            }
+              });
+            }}
             disabled={isSendingFriendRequest}
           >
             <UserPlus className="w-4 h-4 mr-2" />
             {isSendingFriendRequest ? "Đang gửi..." : "Kết bạn"}
           </Button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -396,6 +505,8 @@ export function ChatHeader({
     useState(false);
   const [groupDraftJoinApprovalEnabled, setGroupDraftJoinApprovalEnabled] =
     useState(false);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
   const [groupShareOpen, setGroupShareOpen] = useState(false);
   const [groupCardRecipientQuery, setGroupCardRecipientQuery] = useState("");
   const [groupCardRecipientIds, setGroupCardRecipientIds] = useState<string[]>(
@@ -501,6 +612,33 @@ export function ChatHeader({
 
     return "";
   }, [avatar, conversation, currentUserId]);
+  const groupAvatarMembers = useMemo<GroupAvatarMemberView[]>(() => {
+    if (!conversation || conversation.type !== "group") return [];
+    const typedConversation = conversation as ChatConversation;
+
+    return typedConversation.members
+      .map((member) => {
+        const userId = getMemberUserId(member);
+        const profile =
+          typeof member.userId === "string" ? undefined : member.userId;
+        const fallbackName = profile?.displayName || `User ${userId || ""}`;
+
+        return {
+          userId: userId || fallbackName,
+          displayName: fallbackName,
+          avatar: profile?.avatar || "",
+        };
+      })
+      .filter((member) => Boolean(member.userId));
+  }, [conversation]);
+  const shouldUseCompositeGroupAvatar =
+    conversation?.type === "group" &&
+    !headerAvatarKey &&
+    groupAvatarMembers.length >= 3;
+  const groupMemberCount =
+    conversation?.type === "group"
+      ? (conversation as ChatConversation).members.length
+      : 0;
 
   const groupCallParticipantIds = useMemo(() => {
     if (!conversation || conversation.type !== "group" || !currentUserId) {
@@ -711,6 +849,23 @@ export function ChatHeader({
     setGroupDrawerOpen(true);
   };
 
+  const openRenameDialog = () => {
+    setRenameValue(conversation?.name || displayName || "");
+    setRenameDialogOpen(true);
+  };
+
+  const handleRenameGroup = async () => {
+    if (!currentId) return;
+    const nextName = renameValue.trim();
+    if (!nextName) return;
+
+    await updateGroupMutation.mutateAsync({
+      conversationId: currentId,
+      payload: { name: nextName },
+    });
+    setRenameDialogOpen(false);
+  };
+
   const handleSaveGroupInfo = async (payload: {
     name?: string;
     groupAvatar?: string;
@@ -819,23 +974,49 @@ export function ChatHeader({
             </button>
 
             <div className="relative shrink-0">
-              <PresignedAvatar
-                avatarKey={headerAvatarKey}
-                displayName={displayName}
-                className="border-2 border-white shadow-lg h-11 w-11 md:h-12 md:w-12 ring-1 ring-slate-100"
-                fallbackClassName="font-bold text-white bg-gradient-to-br from-blue-400 to-blue-600"
-              />
+              {shouldUseCompositeGroupAvatar ? (
+                <GroupCompositeAvatar
+                  members={groupAvatarMembers}
+                  totalCount={groupMemberCount}
+                  className="h-11 w-11 md:h-12 md:w-12"
+                />
+              ) : (
+                <PresignedAvatar
+                  avatarKey={headerAvatarKey}
+                  displayName={displayName}
+                  className="border-2 border-white shadow-lg h-11 w-11 md:h-12 md:w-12 ring-1 ring-slate-100"
+                  fallbackClassName="font-bold text-white bg-gradient-to-br from-blue-400 to-blue-600"
+                />
+              )}
               {isOnline && (
                 <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full shadow-sm" />
               )}
             </div>
 
             <div className="flex flex-col min-w-0">
-              <h2 className="text-base font-bold leading-tight truncate text-slate-900 md:text-lg">
-                {displayName}
-              </h2>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <h2 className="text-base font-bold leading-tight truncate text-slate-900 md:text-lg">
+                  {displayName}
+                </h2>
+                {conversation?.type === "group" && isAdmin && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openRenameDialog();
+                    }}
+                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-blue-600"
+                    title="Đổi tên nhóm"
+                    aria-label="Đổi tên nhóm"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
               <p className="text-[11px] md:text-[12px] text-slate-400 font-medium truncate">
-                {statusText || (isOnline ? "Đang hoạt động" : "Vừa truy cập")}
+                {conversation?.type === "group"
+                  ? `Thành viên ${groupMemberCount}`
+                  : statusText || (isOnline ? "Đang hoạt động" : "Vừa truy cập")}
               </p>
             </div>
           </div>
@@ -1215,6 +1396,46 @@ export function ChatHeader({
         }}
         removing={removeMemberMutation.isPending}
       />
+      <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Đổi tên nhóm</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <p className="text-sm text-slate-600">
+              Nhập tên mới cho nhóm chat.
+            </p>
+            <Input
+              value={renameValue}
+              onChange={(event) => setRenameValue(event.target.value)}
+              maxLength={80}
+              placeholder="Tên nhóm"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRenameDialogOpen(false)}
+              disabled={updateGroupMutation.isPending}
+            >
+              Hủy
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                void handleRenameGroup();
+              }}
+              disabled={
+                updateGroupMutation.isPending || renameValue.trim().length < 2
+              }
+            >
+              {updateGroupMutation.isPending ? "Đang lưu..." : "Lưu"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={leaveConfirmOpen} onOpenChange={setLeaveConfirmOpen}>
         <DialogContent>
           <DialogHeader>
@@ -2431,6 +2652,10 @@ function GroupSettingsDrawer({
       return member.displayName.toLowerCase().includes(query);
     });
   }, [memberQuery, members]);
+  const removingMember = useMemo(
+    () => filteredMembers.find((member) => member.userId === confirmRemoveId),
+    [filteredMembers, confirmRemoveId],
+  );
 
   const pendingJoinRequestCount = pendingJoinRequests.length;
 
@@ -2872,32 +3097,47 @@ function GroupSettingsDrawer({
                   )}
 
                   {confirmRemoveId && (
-                    <div className="p-4 border border-red-200 rounded-2xl bg-red-50">
-                      <p className="mb-3 text-sm text-red-800">
-                        Xóa thành viên này khỏi nhóm?
-                      </p>
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setConfirmRemoveId(null)}
-                          disabled={removing}
-                        >
-                          Hủy
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => {
-                            onRemoveMember(confirmRemoveId);
-                            setConfirmRemoveId(null);
-                          }}
-                          disabled={removing}
-                        >
-                          {removing ? "Đang xóa..." : "Xóa"}
-                        </Button>
-                      </div>
-                    </div>
+                    <Dialog
+                      open={Boolean(confirmRemoveId)}
+                      onOpenChange={(nextOpen) => {
+                        if (!nextOpen) {
+                          setConfirmRemoveId(null);
+                        }
+                      }}
+                    >
+                      <DialogContent className="sm:max-w-sm">
+                        <DialogHeader>
+                          <DialogTitle>Xóa thành viên khỏi nhóm?</DialogTitle>
+                        </DialogHeader>
+                        <p className="text-sm text-slate-600">
+                          {removingMember
+                            ? `Bạn có chắc muốn xóa ${removingMember.displayName} khỏi nhóm không?`
+                            : "Bạn có chắc muốn xóa thành viên này khỏi nhóm không?"}
+                        </p>
+                        <DialogFooter>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setConfirmRemoveId(null)}
+                            disabled={removing}
+                          >
+                            Hủy
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            onClick={() => {
+                              if (!confirmRemoveId) return;
+                              onRemoveMember(confirmRemoveId);
+                              setConfirmRemoveId(null);
+                            }}
+                            disabled={removing}
+                          >
+                            {removing ? "Đang xóa..." : "Xóa"}
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
                   )}
                 </div>
               )}
