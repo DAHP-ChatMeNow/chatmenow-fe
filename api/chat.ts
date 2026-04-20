@@ -175,6 +175,12 @@ export interface DeleteMessageForMeResponse {
   conversationId?: string;
 }
 
+export interface ClearConversationHistoryResponse {
+  success: boolean;
+  conversationId: string;
+  lastClearedAt: string;
+}
+
 export interface AiAdminConfig {
   isEnabled: boolean;
   autoCommentEnabled: boolean;
@@ -568,6 +574,20 @@ export const chatService = {
       conversationId: String(res.data?.conversationId || conversationId),
       lastReadAt: res.data?.lastReadAt ? String(res.data.lastReadAt) : undefined,
       unreadCount: Number(res.data?.unreadCount || 0),
+    };
+  },
+
+  clearConversationHistory: async (
+    conversationId: string,
+  ): Promise<ClearConversationHistoryResponse> => {
+    const res = await api.post<any>(
+      `/chat/conversations/${conversationId}/clear`,
+    );
+
+    return {
+      success: res.data?.success !== false,
+      conversationId: String(res.data?.conversationId || conversationId),
+      lastClearedAt: String(res.data?.lastClearedAt || new Date().toISOString()),
     };
   },
 

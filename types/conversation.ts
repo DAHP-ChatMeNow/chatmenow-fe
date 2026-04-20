@@ -5,6 +5,11 @@ export interface ConversationMember {
   lastReadAt?: Date;
 }
 
+export interface ConversationMemberSetting {
+  userId: string;
+  lastClearedAt?: Date | string | null;
+}
+
 export interface LastMessage {
   content?: string;
   type?: string;
@@ -32,6 +37,7 @@ export interface Conversation {
   groupAvatar?: string;
   pinManagementEnabled?: boolean;
   joinApprovalEnabled?: boolean;
+  memberSettings?: ConversationMemberSetting[];
   members: ConversationMember[];
   lastMessage?: LastMessage;
   unreadCount?: number;

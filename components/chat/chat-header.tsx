@@ -25,6 +25,7 @@ import {
   LogOut,
   Sparkles,
   FileText,
+  Trash2,
   Pencil,
   Pin,
   Save,
@@ -63,6 +64,7 @@ import {
   useMessages,
   useConversation,
   useAddMemberToGroup,
+  useClearConversationHistory,
   useLeaveGroup,
   useRemoveMemberFromGroup,
   useTransferGroupAdmin,
@@ -512,6 +514,7 @@ export function ChatHeader({
   const [groupCardRecipientIds, setGroupCardRecipientIds] = useState<string[]>(
     [],
   );
+  const [clearHistoryConfirmOpen, setClearHistoryConfirmOpen] = useState(false);
   const [backgroundOpen, setBackgroundOpen] = useState(false);
   const [selectedBackground, setSelectedBackground] =
     useState<ChatBackgroundKey>("default");
@@ -522,6 +525,7 @@ export function ChatHeader({
   const setSummaryOpen = onSummaryOpenChange ?? setInternalSummaryOpen;
 
   const addMemberMutation = useAddMemberToGroup();
+  const clearConversationHistoryMutation = useClearConversationHistory();
   const leaveGroupMutation = useLeaveGroup();
   const removeMemberMutation = useRemoveMemberFromGroup();
   const transferAdminMutation = useTransferGroupAdmin();
@@ -1099,6 +1103,12 @@ export function ChatHeader({
                   <Pin className="text-slate-500" /> Xem tin ghim
                 </DropdownMenuItem>
                 <DropdownMenuItem
+                  className="h-10 rounded-lg px-3 text-[15px] font-medium text-red-600 focus:bg-red-50 focus:text-red-700"
+                  onClick={() => setClearHistoryConfirmOpen(true)}
+                >
+                  <Trash2 className="w-4 h-4 text-red-500" /> Xóa lịch sử hội thoại
+                </DropdownMenuItem>
+                <DropdownMenuItem
                   className="h-10 rounded-lg px-3 text-[15px] font-medium text-slate-700"
                   onClick={openBackgroundPicker}
                 >
@@ -1395,6 +1405,7 @@ export function ChatHeader({
           removeMemberMutation.mutate({ conversationId: currentId, memberId });
         }}
         removing={removeMemberMutation.isPending}
+        onClearHistory={() => setClearHistoryConfirmOpen(true)}
       />
       <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
         <DialogContent className="sm:max-w-md">
@@ -1553,6 +1564,63 @@ export function ChatHeader({
               );
             })}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={clearHistoryConfirmOpen}
+        onOpenChange={setClearHistoryConfirmOpen}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-red-100 shrink-0">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <DialogTitle className="text-slate-900">Xóa lịch sử hội thoại?</DialogTitle>
+            </div>
+          </DialogHeader>
+          <p className="text-sm text-slate-500 leading-relaxed pl-[52px]">
+            Tất cả tin nhắn sẽ <span className="font-medium text-slate-700">biến mất khỏi màn hình của bạn</span> ngay lập tức. Người khác trong cuộc trò chuyện vẫn giữ nguyên lịch sử của họ.
+          </p>
+          <DialogFooter className="gap-2 sm:gap-0 pt-2">
+            <Button
+              variant="outline"
+              className="flex-1 sm:flex-none border-slate-200"
+              onClick={() => setClearHistoryConfirmOpen(false)}
+              disabled={clearConversationHistoryMutation.isPending}
+            >
+              Hủy bỏ
+            </Button>
+            <Button
+              variant="destructive"
+              className="flex-1 sm:flex-none gap-2"
+              onClick={() => {
+                if (!currentId) return;
+                clearConversationHistoryMutation.mutate(
+                  { conversationId: currentId },
+                  {
+                    onSuccess: () => {
+                      setClearHistoryConfirmOpen(false);
+                    },
+                  },
+                );
+              }}
+              disabled={clearConversationHistoryMutation.isPending}
+            >
+              {clearConversationHistoryMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Đang xóa...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4" />
+                  Xóa lịch sử
+                </>
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
@@ -2594,6 +2662,7 @@ function GroupSettingsDrawer({
   transferring,
   onRemoveMember,
   removing,
+  onClearHistory,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -2627,6 +2696,7 @@ function GroupSettingsDrawer({
   transferring: boolean;
   onRemoveMember: (memberId: string) => void;
   removing: boolean;
+  onClearHistory?: () => void;
 }) {
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [confirmTransferId, setConfirmTransferId] = useState<string | null>(
@@ -2930,6 +3000,21 @@ function GroupSettingsDrawer({
                       </div>
                     </div>
                   )}
+
+                  <div className="space-y-3 pt-2">
+                    <div className="text-xs font-semibold text-slate-500 tracking-wider uppercase px-1">
+                      Dữ liệu & Lưu trữ
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full justify-start gap-3 rounded-2xl border-red-100 bg-red-50/50 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-200 transition-all h-12"
+                      onClick={onClearHistory}
+                    >
+                      <Trash2 className="w-4 h-4 text-red-500" />
+                      Xóa lịch sử hội thoại
+                    </Button>
+                  </div>
 
                   <div className="flex items-center gap-2">
                     <Button

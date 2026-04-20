@@ -117,6 +117,8 @@ type RealtimeDeleteForMePayload = {
   };
 };
 
+type RealtimeDeleteForEveryonePayload = RealtimeDeleteForMePayload;
+
 type RealtimePinnedMessageItem = {
   messageId?: string;
   pinnedAt?: string;
@@ -407,10 +409,8 @@ export function SocketProvider({ children }: SocketProviderProps) {
           });
 
           if (existingIndex < 0) {
-            return {
-              ...(oldData || {}),
-              messages: [...oldMessages, message],
-            };
+            // Do not resurrect messages removed locally (e.g. deleted-for-me).
+            return oldData;
           }
 
           const nextMessages = [...oldMessages];
@@ -432,6 +432,47 @@ export function SocketProvider({ children }: SocketProviderProps) {
 
     const handleRealtimeDeletedForMe = (
       payload: RealtimeDeleteForMePayload,
+    ) => {
+      const messageId =
+        payload?.messageId ||
+        payload?.id ||
+        payload?._id ||
+        payload?.message?.id ||
+        payload?.message?._id;
+      const conversationId =
+        payload?.conversationId || payload?.message?.conversationId;
+
+      if (!messageId) return;
+
+      if (conversationId) {
+        queryClient.setQueryData(
+          ["messages", conversationId],
+          (oldData: MessagesResponse | undefined) => ({
+            ...(oldData || {}),
+            messages: (oldData?.messages || []).filter((item) => {
+              const itemId = item.id || item._id;
+              return itemId !== messageId;
+            }),
+          }),
+        );
+      } else {
+        queryClient.setQueriesData<MessagesResponse | undefined>(
+          { queryKey: ["messages"] },
+          (oldData) => ({
+            ...(oldData || {}),
+            messages: (oldData?.messages || []).filter((item) => {
+              const itemId = item.id || item._id;
+              return itemId !== messageId;
+            }),
+          }),
+        );
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    };
+
+    const handleRealtimeDeletedForEveryone = (
+      payload: RealtimeDeleteForEveryonePayload,
     ) => {
       const messageId =
         payload?.messageId ||
@@ -507,7 +548,37 @@ export function SocketProvider({ children }: SocketProviderProps) {
     socketInstance.on("message:unsent", handleRealtimeMessageUpdated);
     socketInstance.on("message:reaction", handleRealtimeMessageUpdated);
     socketInstance.on("message:deleted-for-me", handleRealtimeDeletedForMe);
+    socketInstance.on("message:deleted", handleRealtimeDeletedForEveryone);
     socketInstance.on("conversation:pinned-updated", handlePinnedMessagesUpdated);
+
+    // conversation:cleared — chỉ xóa cache messages phía người dùng đã xóa lịch sử
+    const handleConversationCleared = (payload: {
+      conversationId?: string;
+      userId?: string;
+      lastClearedAt?: string;
+    }) => {
+      const conversationId = String(payload?.conversationId || "").trim();
+      const clearedByUserId = String(payload?.userId || "").trim();
+      if (!conversationId || !clearedByUserId) return;
+
+      // Chỉ cập nhật cache nếu chính người dùng hiện tại đã xóa lịch sử
+      if (clearedByUserId !== userId) return;
+
+      queryClient.setQueryData<MessagesResponse>(
+        ["messages", conversationId],
+        (old) => ({
+          ...(old || {}),
+          messages: [],
+          total: 0,
+          hasMore: false,
+          nextCursor: null,
+        }),
+      );
+
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    };
+
+    socketInstance.on("conversation:cleared", handleConversationCleared);
 
     const handlePollUpdated = (payload: { messageId?: string; poll?: any }) => {
       if (!payload?.messageId || !payload?.poll) return;
@@ -620,7 +691,9 @@ export function SocketProvider({ children }: SocketProviderProps) {
       socketInstance.off("message:unsent", handleRealtimeMessageUpdated);
       socketInstance.off("message:reaction", handleRealtimeMessageUpdated);
       socketInstance.off("message:deleted-for-me", handleRealtimeDeletedForMe);
+      socketInstance.off("message:deleted", handleRealtimeDeletedForEveryone);
       socketInstance.off("conversation:pinned-updated", handlePinnedMessagesUpdated);
+      socketInstance.off("conversation:cleared", handleConversationCleared);
       socketInstance.off("poll:updated", handlePollUpdated);
       socketInstance.off("notification", handleNotification);
       socketInstance.off("notification:new");
