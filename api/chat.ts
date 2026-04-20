@@ -254,6 +254,11 @@ export interface UnreadSummaryCandidatesResponse {
   messages: UnreadSummaryCandidateMessage[];
 }
 
+export interface UnreadSummaryDiscardResponse {
+  discardedCount: number;
+  remainingPending: number;
+}
+
 export interface UnreadSummaryHistoryItem {
   _id: string;
   dayKey: string;
@@ -649,6 +654,21 @@ export const chatService = {
     return {
       totalPending: Number(payload.totalPending || messages.length || 0),
       messages,
+    };
+  },
+
+  discardUnreadSummaryCandidates: async (
+    conversationId: string,
+    payload?: { messageIds?: string[]; discardAll?: boolean },
+  ): Promise<UnreadSummaryDiscardResponse> => {
+    const res = await api.post<any>(
+      `/chat/conversations/${conversationId}/unread-summary/candidates/discard`,
+      payload || {},
+    );
+
+    return {
+      discardedCount: Number(res.data?.discardedCount || 0),
+      remainingPending: Number(res.data?.remainingPending || 0),
     };
   },
 

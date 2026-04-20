@@ -266,16 +266,7 @@ function GroupMemberCard({
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={() => router.push(`/profile/${member.userId}`)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          void router.push(`/profile/${member.userId}`);
-        }
-      }}
-      className="px-3 py-2.5 bg-white border shadow-sm rounded-2xl border-slate-200 cursor-pointer transition-colors hover:bg-slate-50"
+      className="px-3 py-2.5 bg-white border shadow-sm rounded-2xl border-slate-200"
     >
       <div className="flex items-center justify-between gap-2.5">
         <div className="flex items-center flex-1 min-w-0 gap-2.5 text-left">

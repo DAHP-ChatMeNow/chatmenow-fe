@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, Loader2, RefreshCcw, Sparkles, MessageSquareText } from "lucide-react";
 import {
   Dialog,
@@ -19,6 +19,7 @@ import {
   type UnreadSummaryMessagesResponse,
   type UnreadSummaryResult,
 } from "@/api/chat";
+import { toast } from "sonner";
 
 type ChatBackgroundKey = "default" | "sky" | "sunset" | "mint" | "night";
 
@@ -116,6 +117,22 @@ const formatDateTime = (value?: string | null) => {
   });
 };
 
+const isPlainTextCandidateMessage = (message: UnreadSummaryCandidateMessage) => {
+  if (!message) return false;
+  if (String(message.type || "") !== "text") return false;
+  if (message.isUnsent) return false;
+  if ((message.attachments || []).length > 0) return false;
+  if (message.replyToMessageId) return false;
+  if (message.sharedPostId) return false;
+  if (message.pollId) return false;
+
+  const normalized = String(message.content || "").trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized.startsWith("[tin nhắn chuyển tiếp]")) return false;
+  if (normalized.startsWith("[tin nhan chuyen tiep]")) return false;
+  return true;
+};
+
 export function UnreadSummaryDialog({
   open,
   onOpenChange,
@@ -133,6 +150,7 @@ export function UnreadSummaryDialog({
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [discardingCandidates, setDiscardingCandidates] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<UnreadSummaryResult | null>(null);
   const [candidateMessages, setCandidateMessages] =
@@ -144,6 +162,9 @@ export function UnreadSummaryDialog({
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const [selectedHistoryDetail, setSelectedHistoryDetail] =
     useState<UnreadSummaryMessagesResponse | null>(null);
+  const dragSelectingRef = useRef(false);
+  const dragModeRef = useRef<"select" | "unselect">("select");
+  const dragVisitedIdsRef = useRef<Set<string>>(new Set());
 
   const fetchSummary = async (forceRefresh = false) => {
     if (!conversationId) return;
@@ -164,6 +185,70 @@ export function UnreadSummaryDialog({
         messageIds: effectiveMessageIds,
       });
       setSummary(result);
+
+      if (result?.summaryId && result?.summary) {
+        const todayKey = toDayKey();
+        const nowIso = new Date().toISOString();
+        const selectedSet = new Set(effectiveMessageIds.map((id) => String(id)));
+        const selectedMessages = candidateMessages
+          .filter((message) =>
+            selectedSet.has(String(message.id || message._id || "")),
+          )
+          .sort(
+            (a, b) =>
+              new Date(String(a.createdAt || 0)).getTime() -
+              new Date(String(b.createdAt || 0)).getTime(),
+          );
+
+        const cachedHistoryItem: UnreadSummaryHistoryItem = {
+          _id: String(result.summaryId),
+          dayKey: todayKey,
+          unreadCount: Number(result.unreadCount || selectedMessages.length || 0),
+          assistantName: result.assistantName,
+          summary: {
+            overview: result.summary?.overview,
+            urgency: result.summary?.urgency,
+          },
+          createdAt: nowIso,
+          summarizedFromAt: result.summarizedFromAt || null,
+          summarizedToAt: result.summarizedToAt || null,
+        };
+
+        setHistoryDate(todayKey);
+        setHistoryItems((prev) => {
+          const existingIndex = prev.findIndex(
+            (item) => String(item._id) === String(cachedHistoryItem._id),
+          );
+
+          if (existingIndex >= 0) {
+            const next = [...prev];
+            next[existingIndex] = {
+              ...next[existingIndex],
+              ...cachedHistoryItem,
+            };
+            return next;
+          }
+
+          return [cachedHistoryItem, ...prev];
+        });
+
+        setSelectedHistoryId(String(result.summaryId));
+        setSelectedHistoryDetail({
+          summaryId: String(result.summaryId),
+          dayKey: todayKey,
+          assistantName: result.assistantName,
+          summary: result.summary,
+          messages: selectedMessages,
+          summarizedFromAt: result.summarizedFromAt || null,
+          summarizedToAt: result.summarizedToAt || null,
+          unreadCount: Number(result.unreadCount || selectedMessages.length || 0),
+          createdAt: nowIso,
+        });
+
+        // Background sync to reconcile local cache with server ordering/details.
+        void fetchHistory(todayKey);
+      }
+
       await fetchCandidates();
     } catch (err: unknown) {
       const message =
@@ -260,10 +345,7 @@ export function UnreadSummaryDialog({
   }, [open, conversationId]);
 
   const selectableCandidates = useMemo(
-    () =>
-      candidateMessages.filter(
-        (message) => String(message.type || "") !== "system",
-      ),
+    () => candidateMessages.filter((message) => isPlainTextCandidateMessage(message)),
     [candidateMessages],
   );
 
@@ -294,7 +376,111 @@ export function UnreadSummaryDialog({
     });
   };
 
+  const applySelectionForMessage = useCallback(
+    (messageId: string, mode: "select" | "unselect") => {
+      if (!messageId) return;
+
+      setSelectedMessageIds((prev) => {
+        const hasId = prev.includes(messageId);
+        if (mode === "select") {
+          if (hasId) return prev;
+          return [...prev, messageId];
+        }
+
+        if (!hasId) return prev;
+        return prev.filter((id) => id !== messageId);
+      });
+    },
+    [],
+  );
+
+  const startDragSelect = useCallback(
+    (messageId: string, isChecked: boolean) => {
+      dragSelectingRef.current = true;
+      dragModeRef.current = isChecked ? "unselect" : "select";
+      dragVisitedIdsRef.current = new Set([messageId]);
+      applySelectionForMessage(messageId, dragModeRef.current);
+    },
+    [applySelectionForMessage],
+  );
+
+  const handleDragEnter = useCallback(
+    (messageId: string) => {
+      if (!dragSelectingRef.current) return;
+      if (dragVisitedIdsRef.current.has(messageId)) return;
+      dragVisitedIdsRef.current.add(messageId);
+      applySelectionForMessage(messageId, dragModeRef.current);
+    },
+    [applySelectionForMessage],
+  );
+
+  const stopDragSelect = useCallback(() => {
+    dragSelectingRef.current = false;
+    dragVisitedIdsRef.current.clear();
+  }, []);
+
+  const discardCandidates = useCallback(
+    async (discardAll: boolean) => {
+      if (!conversationId) return;
+
+      const selectedIds = selectedMessageIds;
+      if (!discardAll && selectedIds.length === 0) {
+        toast.error("Bạn cần chọn ít nhất 1 tin nhắn để xóa");
+        return;
+      }
+
+      setDiscardingCandidates(true);
+      try {
+        const result = await chatService.discardUnreadSummaryCandidates(
+          conversationId,
+          discardAll
+            ? { discardAll: true }
+            : { messageIds: selectedIds },
+        );
+
+        if (!discardAll) {
+          setSelectedMessageIds((prev) =>
+            prev.filter((id) => !selectedIds.includes(id)),
+          );
+        } else {
+          setSelectedMessageIds([]);
+        }
+
+        await fetchCandidates();
+        toast.success(
+          `Đã xóa ${result.discardedCount} tin khỏi hàng chờ tóm tắt`,
+        );
+      } catch (err: unknown) {
+        const message =
+          typeof err === "object" &&
+          err !== null &&
+          "response" in err &&
+          typeof (err as { response?: { data?: { message?: string } } }).response
+            ?.data?.message === "string"
+            ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+            : "Không thể xóa tin nhắn khỏi hàng chờ tóm tắt";
+        toast.error(message);
+      } finally {
+        setDiscardingCandidates(false);
+      }
+    },
+    [conversationId, selectedMessageIds],
+  );
+
   const summaryOverview = summary?.summary?.overview?.trim() || "";
+
+  useEffect(() => {
+    if (!open) return;
+
+    const onMouseUp = () => {
+      stopDragSelect();
+    };
+
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [open, stopDragSelect]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -352,25 +538,46 @@ export function UnreadSummaryDialog({
                         <h3 className="text-base font-semibold text-slate-900">
                           Chọn tin nhắn để tóm tắt
                         </h3>
-                        <div className="flex items-center gap-2 text-xs text-slate-600">
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
                           <button
                             type="button"
                             className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-medium hover:bg-slate-100"
                             onClick={toggleSelectAll}
+                            disabled={discardingCandidates}
                           >
                             {allSelected ? "Bỏ chọn tất cả" : "Chọn tất cả"}
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 font-medium text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => void discardCandidates(false)}
+                            disabled={discardingCandidates || selectedMessageIds.length === 0}
+                          >
+                            {discardingCandidates ? "Đang xóa..." : "Xóa đã chọn"}
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-full border border-rose-200 bg-white px-3 py-1 font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => void discardCandidates(true)}
+                            disabled={discardingCandidates || selectableCandidates.length === 0}
+                          >
+                            Xóa tất cả
                           </button>
                           <span>{selectedMessageIds.length} đã chọn</span>
                         </div>
                       </div>
+
+                      <p className="mb-3 text-xs text-slate-500">
+                        Mẹo: giữ chuột trái và kéo qua danh sách để chọn/bỏ chọn nhanh nhiều tin nhắn.
+                      </p>
 
                       {selectableCandidates.length === 0 ? (
                         <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
                           Không có tin nhắn chờ tóm tắt.
                         </div>
                       ) : (
-                        <ScrollArea className="max-h-[260px]">
-                          <div className="space-y-2 pr-2">
+                        <div className="max-h-[300px] overflow-y-auto pr-2 [scrollbar-gutter:stable] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-slate-100">
+                          <div className="space-y-2" onMouseLeave={stopDragSelect}>
                             {selectableCandidates.map((message) => {
                               const messageId = String(message.id || message._id || "");
                               const checked = selectedMessageIds.includes(messageId);
@@ -380,17 +587,31 @@ export function UnreadSummaryDialog({
                                   : "Người dùng";
 
                               return (
-                                <label
+                                <div
                                   key={messageId}
-                                  className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-3 hover:bg-slate-100"
+                                  className="flex cursor-pointer select-none items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-3 hover:bg-slate-100"
+                                  onMouseDown={(event) => {
+                                    if (event.button !== 0) return;
+                                    const target = event.target as HTMLElement;
+                                    if (target.closest('[data-summary-checkbox="true"]')) {
+                                      return;
+                                    }
+                                    startDragSelect(messageId, checked);
+                                  }}
+                                  onMouseEnter={() => handleDragEnter(messageId)}
                                 >
                                   <input
+                                    data-summary-checkbox="true"
                                     type="checkbox"
                                     className="mt-1 h-4 w-4 rounded border-slate-300"
                                     checked={checked}
                                     onChange={() => toggleSelectMessage(messageId)}
                                   />
-                                  <div className="min-w-0 flex-1">
+                                  <button
+                                    type="button"
+                                    className="min-w-0 flex-1 text-left"
+                                    onClick={() => toggleSelectMessage(messageId)}
+                                  >
                                     <div className="mb-1 flex items-center justify-between gap-3 text-xs text-slate-500">
                                       <span className="font-semibold text-slate-700">
                                         {senderName}
@@ -406,12 +627,12 @@ export function UnreadSummaryDialog({
                                     <p className="line-clamp-2 text-sm leading-6 text-slate-700">
                                       {message.content || "[Không có nội dung]"}
                                     </p>
-                                  </div>
-                                </label>
+                                  </button>
+                                </div>
                               );
                             })}
                           </div>
-                        </ScrollArea>
+                        </div>
                       )}
                     </div>
 
@@ -450,27 +671,27 @@ export function UnreadSummaryDialog({
                     </div>
 
                     {selectedHistoryDetail ? (
-                      <div className={`rounded-3xl border border-slate-200/40 ${theme.detailHeaderBg} shadow-xl`}>
-                        <div className="border-b border-white/10 px-4 py-3" style={{borderTopColor: 'rgba(255,255,255,0.1)'}}>
-                          <div className="flex items-center gap-2 text-sm font-semibold">
-                            <MessageSquareText className={`h-4 w-4`} style={{color: backgroundTheme === 'night' ? '#a5f3fc' : '#0ea5e9'}} />
+                      <div className="rounded-3xl border border-slate-200 bg-white shadow-xl">
+                        <div className="border-b border-slate-200 px-4 py-3">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                            <MessageSquareText className="h-4 w-4 text-sky-500" />
                             Chi tiết đoạn đã tóm tắt
                           </div>
-                          <div className={`mt-1 text-xs`} style={{color: backgroundTheme === 'night' ? '#cbd5e1' : 'rgba(0,0,0,0.6)'}}>
+                          <div className="mt-1 text-xs text-slate-500">
                             {selectedHistoryDetail.unreadCount || 0} tin nhắn
                             · {selectedHistoryDetail.dayKey}
                           </div>
                         </div>
 
-                        <ScrollArea className="max-h-[320px]">
-                          <div className={`space-y-3 p-4 ${backgroundTheme === 'night' ? 'bg-slate-950' : 'bg-white/50'}`}>
+                        <div className="max-h-[320px] overflow-y-auto p-4 pr-2 [scrollbar-gutter:stable] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-slate-100">
+                          <div className="space-y-3">
                             {loadingDetail ? (
-                              <div className={`flex items-center gap-2 text-sm`} style={{color: backgroundTheme === 'night' ? '#cbd5e1' : 'rgba(0,0,0,0.5)'}}>
+                              <div className="flex items-center gap-2 text-sm text-slate-500">
                                 <Loader2 className="h-4 w-4 animate-spin" />
                                 Đang tải nội dung...
                               </div>
                             ) : selectedHistoryDetail.messages.length === 0 ?  (
-                              <div className={`text-sm`} style={{color: backgroundTheme === 'night' ? '#cbd5e1' : 'rgba(0,0,0,0.5)'}}>
+                              <div className="text-sm text-slate-500">
                                 Chưa có tin nhắn chi tiết cho bản tóm tắt này.
                               </div>
                             ) : (
@@ -483,10 +704,10 @@ export function UnreadSummaryDialog({
                                 return (
                                   <div
                                     key={message.id || message._id}
-                                    className="rounded-2xl bg-white/10 px-4 py-3 text-sm text-white/90"
+                                    className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700"
                                   >
-                                    <div className="mb-1 flex items-center justify-between gap-3 text-xs text-slate-300">
-                                      <span className="font-semibold text-cyan-200">
+                                    <div className="mb-1 flex items-center justify-between gap-3 text-xs text-slate-500">
+                                      <span className="font-semibold text-slate-700">
                                         {senderName}
                                       </span>
                                       <span>
@@ -505,7 +726,7 @@ export function UnreadSummaryDialog({
                               })
                             )}
                           </div>
-                        </ScrollArea>
+                        </div>
                       </div>
                     ) : null}
                   </>
@@ -612,7 +833,7 @@ export function UnreadSummaryDialog({
                 onClick={() => {
                   void fetchSummary(true);
                 }}
-                disabled={loadingSummary || selectedMessageIds.length === 0}
+                disabled={loadingSummary || discardingCandidates || selectedMessageIds.length === 0}
               >
                 {loadingSummary || submittingSummary ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

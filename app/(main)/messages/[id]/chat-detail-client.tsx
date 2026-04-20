@@ -108,6 +108,22 @@ const normalizeCallStatus = (msg: Message): string => {
   return "ended";
 };
 
+const isSystemCallMessage = (msg: Message): boolean => {
+  if (msg.callInfo?.status) return true;
+
+  const text = String(msg.content || "").trim().toLowerCase();
+  if (!text) return false;
+
+  return (
+    text === "ended" ||
+    text === "rejected" ||
+    text === "missed" ||
+    text === "accepted" ||
+    text.includes("cuộc gọi") ||
+    text.includes("cuoc goi")
+  );
+};
+
 const getSystemCallStyle = (status: string) => {
   const text = status.toLowerCase();
 
@@ -1113,7 +1129,12 @@ const EMOTE_LABEL_MAP: Record<string, string> = {
 
 type ReactionUserInfo = { userId: string; displayName: string; avatar?: string };
 type ReactionEntry = { emoji: string; count: number; isMine: boolean; reactors: ReactionUserInfo[] };
-type ReadReceiptUserInfo = { userId: string; displayName: string; avatar?: string };
+type ReadReceiptUserInfo = {
+  userId: string;
+  displayName: string;
+  avatar?: string;
+  lastReadAtMs?: number;
+};
 
 function CombinedReactionBadge({
   entries,
@@ -2020,6 +2041,25 @@ export default function ChatDetailClient() {
     user?.displayName,
     user?.avatar,
   ]);
+
+  const memberLastReadAtMap = useMemo(() => {
+    const map = new Map<string, number>();
+    const members = (conversation?.members || []) as Array<{
+      userId?: string | { _id?: string; id?: string };
+      lastReadAt?: Date | string;
+    }>;
+
+    members.forEach((member) => {
+      const userId = getConversationMemberUserId(member);
+      if (!userId || !member.lastReadAt) return;
+
+      const readAtMs = new Date(member.lastReadAt).getTime();
+      if (Number.isNaN(readAtMs)) return;
+      map.set(userId, readAtMs);
+    });
+
+    return map;
+  }, [conversation?.members]);
 
   const mentionableMembers = useMemo(() => {
     if (!isGroupConversation) return [];
@@ -3255,6 +3295,29 @@ export default function ChatDetailClient() {
                       );
                     }
 
+                    if (!isSystemCallMessage(msg)) {
+                      return (
+                        <Fragment key={stableMessageId || `system-${index}`}>
+                          {shouldRenderUnreadBanner && (
+                            <UnreadSummaryBanner
+                              unreadCount={unreadCount}
+                              isGroupConversation={isGroupConversation}
+                              onOpenSummary={() => setSummaryOpen(true)}
+                              onMarkAsRead={() =>
+                                markConversationAsRead(conversationId)
+                              }
+                              isMarkingRead={isMarkingConversationAsRead}
+                            />
+                          )}
+                          <div className="flex justify-center">
+                            <div className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
+                              {msg.content || "Thông báo hệ thống"}
+                            </div>
+                          </div>
+                        </Fragment>
+                      );
+                    }
+
                     const callStatus = normalizeCallStatus(msg);
                     const callStyle = getSystemCallStyle(callStatus);
                     const callTitle = getSystemCallTitle(callStatus);
@@ -3499,9 +3562,20 @@ export default function ChatDetailClient() {
                             userId,
                             displayName: resolved?.displayName || "Người dùng",
                             avatar: resolved?.avatar,
+                            lastReadAtMs: memberLastReadAtMap.get(userId),
                           };
                         })
+                        .sort(
+                          (a, b) =>
+                            (b.lastReadAtMs || 0) - (a.lastReadAtMs || 0),
+                        )
                     : [];
+                  const latestReadViewer = readByOtherUsers[0];
+                  const overflowReadByUsers = readByOtherUsers.slice(1);
+                  const overflowReadByUsersCount = overflowReadByUsers.length;
+                  const overflowReadByUsersTooltip = overflowReadByUsers
+                    .map((viewer) => viewer.displayName)
+                    .join(", ");
                   const isReadByBackend =
                     normalizedReadStatus === "read" || msg.isRead === true;
                   const isReadByFallback = readByOthersCount > 0;
@@ -4166,6 +4240,40 @@ export default function ChatDetailClient() {
                         </div>
                       )}
 
+                      {isMe &&
+                        !isUnsent &&
+                        isGroupConversation &&
+                        latestReadViewer && (
+                        <div className="mt-1 flex justify-end pr-8">
+                          <div className="flex items-center gap-1 rounded-full bg-white/85 px-1.5 py-0.5 shadow-sm ring-1 ring-slate-200/80">
+                            <PresignedAvatar
+                              key={`read-latest-${messageId}-${latestReadViewer.userId}`}
+                              avatarKey={latestReadViewer.avatar}
+                              displayName={latestReadViewer.displayName}
+                              className="h-3.5 w-3.5 border border-white"
+                              fallbackClassName="bg-slate-200 text-[7px] text-slate-700"
+                            />
+                            {overflowReadByUsersCount > 0 && (
+                              <div className="group relative">
+                                <button
+                                  type="button"
+                                  className="text-[10px] font-medium text-slate-500"
+                                  onClick={() => {
+                                    setReadReceiptsUsers(readByOtherUsers);
+                                    setReadReceiptsDialogOpen(true);
+                                  }}
+                                >
+                                  +{overflowReadByUsersCount}
+                                </button>
+                                <div className="pointer-events-none absolute bottom-full right-0 z-20 mb-1 hidden min-w-[140px] max-w-[220px] rounded-lg bg-slate-900 px-2 py-1.5 text-left text-[10px] leading-4 text-white opacity-0 shadow-lg transition-opacity md:block md:group-hover:opacity-100">
+                                  {overflowReadByUsersTooltip}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
 
                     </Fragment>
                   );
@@ -4198,7 +4306,7 @@ export default function ChatDetailClient() {
         open={readReceiptsDialogOpen}
         onOpenChange={setReadReceiptsDialogOpen}
       >
-        <DialogContent className="overflow-hidden border border-slate-200 p-0 sm:max-w-[360px]">
+        <DialogContent className="!top-auto !bottom-0 !translate-y-0 max-h-[85vh] w-[calc(100vw-12px)] max-w-none overflow-hidden rounded-t-2xl border border-slate-200 p-0 sm:!top-[50%] sm:!bottom-auto sm:!translate-y-[-50%] sm:max-h-none sm:w-full sm:max-w-[360px] sm:rounded-2xl">
           <DialogHeader className="border-b border-slate-100 bg-gradient-to-r from-blue-50/70 to-white px-4 py-3">
             <p className="text-xs font-medium text-slate-500">
               {readReceiptsUsers.length} người đã xem
