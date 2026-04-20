@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/dialog";
 import { ChatHeader } from "@/components/chat/chat-header";
 import { ChatInput } from "@/components/chat/chat-input";
+import { CreatePollDialog, PollBubble } from "@/components/chat/poll";
 import { useParams, useRouter } from "next/navigation";
 import {
   useAiConversation,
@@ -1492,6 +1493,7 @@ export default function ChatDetailClient() {
   const [isLoadingJoinGroupInfo, setIsLoadingJoinGroupInfo] = useState(false);
   const [isJoiningGroup, setIsJoiningGroup] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [pollDialogOpen, setPollDialogOpen] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const originalPostIdCacheRef = useRef(new Map<string, string>());
@@ -2342,10 +2344,19 @@ export default function ChatDetailClient() {
       });
     };
 
+    const handlePollUpdated = (payload: { poll?: any, conversationId?: string }) => {
+      // Re-fetch messages or update the specific poll message in cache
+      queryClient.invalidateQueries({
+        queryKey: ["messages", conversationId],
+      });
+    };
+
     socket.current.on("conversation:pinned-updated", handlePinnedUpdated);
+    socket.current.on("poll:updated", handlePollUpdated);
 
     return () => {
       socket.current?.off("conversation:pinned-updated", handlePinnedUpdated);
+      socket.current?.off("poll:updated", handlePollUpdated);
     };
   }, [conversationId, queryClient, socket]);
 
@@ -3033,7 +3044,7 @@ export default function ChatDetailClient() {
                     !parsedContent &&
                     msg.type !== "audio";
                   const isPlainAttachmentBubble =
-                    isMe && isAttachmentOnlyMessage;
+                    !isUnsent && (msg.type === "poll" || (isMe && isAttachmentOnlyMessage));
                   const canReply = !isUnsent;
                   const isPinned = Boolean(messageId && pinnedMessageIdSet.has(messageId));
                   const canPin =
@@ -3206,7 +3217,7 @@ export default function ChatDetailClient() {
                               : ""
                           }`}
                         >
-                          {hasReplyReference && (
+                          {hasReplyReference && msg.type !== "poll" && (
                             <button
                               type="button"
                               onClick={() => {
@@ -3312,7 +3323,16 @@ export default function ChatDetailClient() {
                               />
                             </div>
                           )}
-                          {isUnsent ? (
+                          {msg.type === "poll" && msg.poll ? (
+                            <PollBubble
+                              poll={msg.poll}
+                              messageId={messageId || ""}
+                              conversationId={conversationId}
+                              currentUserId={currentUserId}
+                              isMe={isMe}
+                              isUnsent={isUnsent}
+                            />
+                          ) : isUnsent ? (
                             <p className={isMe ? "italic text-blue-100" : "italic text-slate-500"}>
                               Tin nhắn đã được thu hồi
                             </p>
@@ -3907,6 +3927,14 @@ export default function ChatDetailClient() {
         }
         onTyping={handleTyping}
         onStopTyping={handleStopTyping}
+        onOpenPollDialog={() => setPollDialogOpen(true)}
+      />
+
+      {/* ── Poll Dialog ── */}
+      <CreatePollDialog
+        open={pollDialogOpen}
+        onClose={() => setPollDialogOpen(false)}
+        conversationId={conversationId}
       />
 
       {/* ── Image Lightbox ── */}

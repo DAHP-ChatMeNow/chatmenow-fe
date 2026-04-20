@@ -999,4 +999,45 @@ export const chatService = {
     const res = await api.delete(`/chat/conversations/${conversationId}`);
     return res.data;
   },
+
+  // ── Poll ─────────────────────────────────────────────────────────────────────
+  createPoll: async (
+    conversationId: string,
+    payload: {
+      question: string;
+      options: { text: string }[];
+      allowMultipleChoices?: boolean;
+      allowAddOptions?: boolean;
+      hideResultsBeforeVote?: boolean;
+      hideVoters?: boolean;
+      deadline?: string | null;
+      pinToTop?: boolean;
+    },
+  ) => {
+    const res = await api.post<unknown>(
+      `/chat/conversations/${conversationId}/polls`,
+      payload,
+    );
+    return res.data;
+  },
+
+  getPoll: async (pollId: string) => {
+    const res = await api.get<unknown>(`/chat/polls/${pollId}`);
+    return (res.data as Record<string, unknown>)?.poll ?? res.data;
+  },
+
+  votePoll: async (pollId: string, optionIds: string[]) => {
+    const res = await api.post<unknown>(`/chat/polls/${pollId}/vote`, { optionIds });
+    return (res.data as Record<string, unknown>)?.poll ?? res.data;
+  },
+
+  addPollOption: async (pollId: string, text: string) => {
+    const res = await api.post<unknown>(`/chat/polls/${pollId}/options`, { text });
+    return (res.data as Record<string, unknown>)?.poll ?? res.data;
+  },
+
+  closePoll: async (pollId: string) => {
+    const res = await api.post<unknown>(`/chat/polls/${pollId}/close`);
+    return (res.data as Record<string, unknown>)?.poll ?? res.data;
+  },
 };
