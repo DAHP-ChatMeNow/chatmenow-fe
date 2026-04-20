@@ -4,6 +4,9 @@ import { useConversationDisplay } from "@/hooks/use-chat";
 import { ChatItem } from "./chat-item";
 import { Conversation } from "@/types/conversation";
 import { formatMessageTime } from "@/lib/utils";
+import { useMarkConversationAsRead } from "@/hooks/use-chat";
+import { useQueryClient } from "@tanstack/react-query";
+import { ConversationsResponse } from "@/api/chat";
 
 type ChatMemberUser =
   | string
@@ -88,6 +91,8 @@ export function ConversationItemDisplay({
   currentUserId: string | undefined;
   isActive: boolean;
 }) {
+  const queryClient = useQueryClient();
+  const { mutate: markConversationAsRead } = useMarkConversationAsRead();
   const typedConversation = conversation as ChatConversation;
   const { displayName, avatar } = useConversationDisplay(
     conversation,
@@ -129,6 +134,29 @@ export function ConversationItemDisplay({
   const groupMemberCount =
     conversation.type === "group" ? typedConversation.members.length : 0;
 
+  const unreadCount = Number(conversation.unreadCount || 0);
+  const safeUnreadCount =
+    Number.isFinite(unreadCount) && unreadCount > 0 ? Math.floor(unreadCount) : 0;
+  const handleOpenConversation = () => {
+    if (safeUnreadCount <= 0) return;
+
+    queryClient.setQueryData<ConversationsResponse>(
+      ["conversations"],
+      (oldData) => {
+        if (!oldData?.conversations?.length) return oldData;
+
+        return {
+          ...oldData,
+          conversations: oldData.conversations.map((item) =>
+            item.id === conversation.id ? { ...item, unreadCount: 0 } : item,
+          ),
+        };
+      },
+    );
+
+    markConversationAsRead(conversation.id);
+  };
+
   return (
     <ChatItem
       id={conversation.id}
@@ -136,13 +164,14 @@ export function ConversationItemDisplay({
       name={displayName || conversation.name || fallbackName}
       lastMsg={formatLastMessagePreview(conversation) || fallbackLastMessage}
       time={formatMessageTime(conversation.lastMessage?.createdAt)}
-      unread={conversation.unreadCount || 0}
+      unread={safeUnreadCount}
       isActive={isActive}
       isBlocked={isBlocked}
       blockedLabel={blockedLabel}
       useCompositeGroupAvatar={shouldUseCompositeGroupAvatar}
       groupAvatarMembers={groupAvatarMembers}
       groupMemberCount={groupMemberCount}
+      onOpenConversation={handleOpenConversation}
     />
   );
 }

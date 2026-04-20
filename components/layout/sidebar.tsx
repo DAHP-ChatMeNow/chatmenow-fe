@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useRef } from "react";
 import {
   MessageSquare,
   UserPlus,
@@ -39,6 +40,7 @@ const getCurrentNotificationCount = (
 export function Sidebar({ mode = "desktop" }: { mode?: "desktop" | "mobile" }) {
   const pathname = usePathname();
   const isMobile = mode === "mobile";
+  const originalTitleRef = useRef<string>("");
   const { data: conversationsData } = useConversations();
   const { data: notificationsData } = useNotifications();
 
@@ -48,6 +50,23 @@ export function Sidebar({ mode = "desktop" }: { mode?: "desktop" | "mobile" }) {
   const notificationCount = getCurrentNotificationCount(
     (notificationsData?.notifications || []) as Array<{ isRead?: boolean }>,
   );
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    if (!originalTitleRef.current) {
+      originalTitleRef.current = document.title || "ChatMeNow";
+    }
+
+    const baseTitle = originalTitleRef.current || "ChatMeNow";
+    if (messageCount > 0) {
+      const unreadLabel = messageCount > 99 ? "99+" : String(messageCount);
+      document.title = `(+${unreadLabel}) tin nhắn chưa đọc - ${baseTitle}`;
+      return;
+    }
+
+    document.title = baseTitle;
+  }, [messageCount]);
 
   const isActive = (path: string) => pathname.startsWith(path);
 

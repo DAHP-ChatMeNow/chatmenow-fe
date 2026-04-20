@@ -23,6 +23,7 @@ interface ChatItemProps {
   groupAvatarMembers?: GroupAvatarMemberView[];
   groupMemberCount?: number;
   showGroupMemberCountBadge?: boolean;
+  onOpenConversation?: () => void;
 }
 
 function GroupAvatarTile({
@@ -134,12 +135,15 @@ export function ChatItem({
   groupAvatarMembers = [],
   groupMemberCount = 0,
   showGroupMemberCountBadge = false,
+  onOpenConversation,
 }: ChatItemProps) {
+  const safeUnread = Number.isFinite(unread) && unread > 0 ? Math.floor(unread) : 0;
+  const hasUnread = safeUnread > 0;
   const memberCountText =
     groupMemberCount > 99 ? "99+" : String(Math.max(groupMemberCount, 0));
 
   return (
-    <Link href={`/messages/${id}`}>
+    <Link href={`/messages/${id}`} onClick={onOpenConversation}>
       <div
         className={`flex items-center gap-3 p-3 mx-2 md:mx-3 rounded-2xl cursor-pointer border transition-colors duration-150 ${
           isActive
@@ -177,23 +181,35 @@ export function ChatItem({
         <div className="flex-1 min-w-0">
           <div className="flex justify-between items-baseline mb-0.5">
             <h4
-              className={`text-[15px] truncate ${isActive ? "text-blue-700 font-bold" : "font-semibold text-slate-900"}`}
+              className={`text-[15px] truncate ${
+                isActive
+                  ? "text-blue-700 font-bold"
+                  : hasUnread
+                    ? "font-bold text-slate-900"
+                    : "font-semibold text-slate-900"
+              }`}
             >
               {name}
             </h4>
-            <span className="text-[11px] text-slate-400 font-medium">
+            <span
+              className={`text-[11px] ${
+                hasUnread ? "text-blue-600 font-semibold" : "text-slate-400 font-medium"
+              }`}
+            >
               {time}
             </span>
           </div>
           <div className="flex justify-between items-center">
             <p
-              className={`text-[13px] truncate pr-2 ${unread > 0 ? "text-slate-900 font-medium" : "text-slate-500"}`}
+              className={`text-[13px] truncate pr-2 ${
+                hasUnread ? "text-slate-900 font-semibold" : "text-slate-500"
+              }`}
             >
               {blockedLabel || lastMsg}
             </p>
-            {unread > 0 && (
+            {hasUnread && (
               <Badge className="bg-blue-600 hover:bg-blue-600 h-5 min-w-[20px] rounded-full text-[10px] flex items-center justify-center p-0">
-                {unread}
+                {safeUnread > 99 ? "99+" : safeUnread}
               </Badge>
             )}
           </div>

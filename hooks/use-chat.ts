@@ -27,6 +27,8 @@ type SendMessageInput = {
   attachments?: MessageAttachment[];
   replyToMessageId?: string;
   sharedPostId?: string;
+  mentionAll?: boolean;
+  mentionUserIds?: string[];
 };
 
 type SendMessageContext = {
@@ -79,6 +81,8 @@ const createOptimisticMessage = (params: {
   attachments?: MessageAttachment[];
   replyToMessageId?: string;
   sharedPostId?: string;
+  mentionAll?: boolean;
+  mentionUserIds?: string[];
   currentUserId?: string;
   currentUserName: string;
   currentUserAvatar?: string;
@@ -97,6 +101,8 @@ const createOptimisticMessage = (params: {
   attachments: params.attachments,
   replyToMessageId: params.replyToMessageId,
   sharedPostId: params.sharedPostId,
+  mentionAll: params.mentionAll,
+  mentions: params.mentionUserIds,
   createdAt: new Date().toISOString(),
   status: "sending",
   isOptimistic: true,
@@ -310,6 +316,8 @@ export const useSendMessage = () => {
         attachments: variables.attachments,
         replyToMessageId: variables.replyToMessageId,
         sharedPostId: variables.sharedPostId,
+        mentionAll: variables.mentionAll,
+        mentionUserIds: variables.mentionUserIds,
         currentUserId,
         currentUserName,
         currentUserAvatar,

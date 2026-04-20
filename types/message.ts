@@ -52,6 +52,7 @@ export interface MessageReaction {
 
 export type MessageStatus = "sending" | "sent" | "failed";
 export type MessageSenderSource = "user" | "ai";
+export type MessageReadStatus = "read" | "unread";
 
 // ─── Poll types ───────────────────────────────────────────────────────────────
 export interface PollVoter {
@@ -102,6 +103,10 @@ export interface Message {
   replyPreview?: MessageReplyPreview;
   reactions?: MessageReaction[];
   readBy?: string[];
+  mentionAll?: boolean;
+  mentions?: string[];
+  isRead?: boolean;
+  readStatus?: MessageReadStatus;
   isUnsent?: boolean;
   isEdited?: boolean;
   editedAt?: Date | string;

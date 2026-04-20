@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Plus, BarChart2, Calendar, Settings, Eye, EyeOff, Users, CheckSquare, Lock, Clock } from "lucide-react";
+import { X, Plus, BarChart2, Calendar, Eye, EyeOff, Users, CheckSquare, Lock, Clock } from "lucide-react";
 import { Poll, PollOption } from "@/types/message";
 import { useCreatePoll, useVotePoll, useAddPollOption, useClosePoll } from "@/hooks/use-poll";
 import { useToast } from "@/hooks/use-toast";
@@ -116,26 +116,26 @@ export function CreatePollDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
-      <DialogContent className="max-w-3xl w-full p-0 overflow-hidden bg-[#1a1d26] border-[#2a2d3a] text-white">
-        <DialogHeader className="px-6 pt-5 pb-4 border-b border-[#2a2d3a]">
-          <DialogTitle className="text-lg font-semibold text-white">Tạo bình chọn</DialogTitle>
+      <DialogContent className="max-w-3xl w-full p-0 overflow-hidden bg-white border-blue-100 text-slate-900 [--ring:221_83%_53%]">
+        <DialogHeader className="px-6 pt-5 pb-4 border-b border-blue-100 bg-gradient-to-r from-blue-50/80 to-white">
+          <DialogTitle className="text-lg font-semibold text-blue-700">Tạo bình chọn</DialogTitle>
         </DialogHeader>
 
         <div className="flex gap-0 max-h-[70vh] overflow-hidden">
           {/* Left: Question + Options */}
-          <div className="flex-1 px-6 py-4 overflow-y-auto space-y-5 border-r border-[#2a2d3a]">
+          <div className="flex-1 px-6 py-4 overflow-y-auto space-y-5 border-r border-blue-100">
             {/* Question */}
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Chủ đề bình chọn</label>
+              <label className="text-sm font-medium text-slate-700">Chủ đề bình chọn</label>
               <div className="relative">
                 <Textarea
                   placeholder="Đặt câu hỏi bình chọn"
                   value={question}
                   onChange={(e) => setQuestion(e.target.value.slice(0, 200))}
-                  className="min-h-[90px] resize-none bg-[#252837] border-[#3a3d50] text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-blue-500/20"
+                  className="min-h-[90px] resize-none bg-white border-blue-200 text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:ring-blue-500/20 focus-visible:ring-blue-500/30"
                   maxLength={200}
                 />
-                <span className="absolute bottom-2 right-3 text-[11px] text-slate-500">
+                <span className="absolute bottom-2 right-3 text-[11px] text-slate-400">
                   {question.length}/200
                 </span>
               </div>
@@ -143,7 +143,7 @@ export function CreatePollDialog({
 
             {/* Options */}
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Các lựa chọn</label>
+              <label className="text-sm font-medium text-slate-700">Các lựa chọn</label>
               <div className="space-y-2">
                 {options.map((opt, idx) => (
                   <div key={idx} className="flex items-center gap-2">
@@ -151,13 +151,13 @@ export function CreatePollDialog({
                       placeholder={`Lựa chọn ${idx + 1}`}
                       value={opt}
                       onChange={(e) => updateOption(idx, e.target.value.slice(0, 200))}
-                      className="flex-1 bg-[#252837] border-[#3a3d50] text-white placeholder:text-slate-500 focus:border-blue-500 h-10"
+                      className="flex-1 bg-white border-blue-200 text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus-visible:ring-blue-500/30 h-10"
                     />
                     {options.length > 2 && (
                       <button
                         type="button"
                         onClick={() => removeOption(idx)}
-                        className="p-1.5 rounded-full text-slate-400 hover:text-red-400 hover:bg-red-400/10 transition-all"
+                        className="p-1.5 rounded-full text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -169,7 +169,7 @@ export function CreatePollDialog({
                 <button
                   type="button"
                   onClick={addOption}
-                  className="flex items-center gap-1.5 text-blue-400 hover:text-blue-300 text-sm font-medium mt-1 transition-colors"
+                  className="flex items-center gap-1.5 text-blue-600 hover:text-blue-700 text-sm font-medium mt-1 transition-colors"
                 >
                   <Plus className="h-4 w-4" />
                   Thêm lựa chọn
@@ -179,23 +179,23 @@ export function CreatePollDialog({
           </div>
 
           {/* Right: Settings */}
-          <div className="w-[280px] shrink-0 px-6 py-4 overflow-y-auto space-y-5">
+          <div className="w-[280px] shrink-0 px-6 py-4 overflow-y-auto space-y-5 bg-blue-50/40">
             {/* Deadline */}
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Thời hạn bình chọn</label>
+              <label className="text-sm font-medium text-slate-700">Thời hạn bình chọn</label>
               <div className="relative">
                 <Input
                   type="datetime-local"
                   value={deadline}
                   onChange={(e) => setDeadline(e.target.value)}
-                  className="bg-[#252837] border-[#3a3d50] text-white/70 focus:border-blue-500 h-10 pr-8"
+                  className="bg-white border-blue-200 text-slate-700 focus:border-blue-500 focus-visible:ring-blue-500/30 h-10 pr-8"
                   placeholder="Không thời hạn"
                 />
                 {deadline && (
                   <button
                     type="button"
                     onClick={() => setDeadline("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -208,7 +208,7 @@ export function CreatePollDialog({
 
             {/* Advanced settings */}
             <div className="space-y-1">
-              <p className="text-sm font-semibold text-slate-300 mb-2">Thiết lập nâng cao</p>
+              <p className="text-sm font-semibold text-blue-700 mb-2">Thiết lập nâng cao</p>
               <SettingRow
                 label="Ghim lên đầu trò chuyện"
                 checked={pinToTop}
@@ -228,7 +228,7 @@ export function CreatePollDialog({
 
             {/* Anonymous vote */}
             <div className="space-y-1">
-              <p className="text-sm font-semibold text-slate-300 mb-2">Bình chọn ẩn danh</p>
+              <p className="text-sm font-semibold text-blue-700 mb-2">Bình chọn ẩn danh</p>
               <SettingRow
                 label="Ẩn kết quả khi chưa bình chọn"
                 checked={hideResultsBeforeVote}
@@ -243,16 +243,9 @@ export function CreatePollDialog({
           </div>
         </div>
 
-        <DialogFooter className="px-6 py-4 border-t border-[#2a2d3a] flex items-center justify-between sm:justify-between gap-3">
-          <button
-            type="button"
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-[#2a2d3a] transition-all"
-            title="Cài đặt"
-          >
-            <Settings className="h-5 w-5" />
-          </button>
+        <DialogFooter className="px-6 py-4 border-t border-blue-100 bg-white flex items-center justify-end gap-3">
           <div className="flex items-center gap-3">
-            <Button variant="outline" onClick={handleClose} className="border-[#3a3d50] text-slate-300 hover:bg-[#2a2d3a] hover:text-white">
+            <Button variant="outline" onClick={handleClose} className="border-blue-200 text-slate-700 hover:bg-blue-50 hover:text-blue-700">
               Hủy
             </Button>
             <Button onClick={handleSubmit} disabled={isPending} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5">
@@ -278,10 +271,10 @@ function SettingRow({
 }) {
   return (
     <div className="flex items-center justify-between py-1.5">
-      <span className="text-sm text-slate-400 flex items-center gap-1 mr-3 leading-snug">
+      <span className="text-sm text-slate-600 flex items-center gap-1 mr-3 leading-snug">
         {label}
         {hint && (
-          <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-500 text-[10px] text-slate-400 cursor-help" title={hint}>?</span>
+          <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-blue-200 text-[10px] text-blue-500 cursor-help" title={hint}>?</span>
         )}
       </span>
       <Switch checked={checked} onCheckedChange={onChange} className="data-[state=checked]:bg-blue-500" />

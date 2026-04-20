@@ -114,6 +114,8 @@ export interface SendMessagePayload {
   attachments?: MessageAttachment[];
   replyToMessageId?: string;
   sharedPostId?: string;
+  mentionAll?: boolean;
+  mentionUserIds?: string[];
 }
 
 export interface PartnerResponse {
@@ -459,9 +461,21 @@ export const chatService = {
   getConversations: async () => {
     const res = await api.get<ConversationsResponse>("/chat/conversations");
     if (res.data.conversations) {
-      res.data.conversations = res.data.conversations.map((conv: any) =>
-        mapMongoId(conv),
-      );
+      res.data.conversations = res.data.conversations.map((conv: any) => {
+        const mapped = mapMongoId(conv);
+        const unreadCountRaw =
+          mapped?.unreadCount ??
+          mapped?.unReadCount ??
+          mapped?.unread ??
+          mapped?.unreadMessages;
+
+        return {
+          ...mapped,
+          unreadCount: Number.isFinite(Number(unreadCountRaw))
+            ? Number(unreadCountRaw)
+            : 0,
+        };
+      });
     }
     return res.data;
   },

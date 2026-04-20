@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import {
   Image as ImageIcon,
@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
+import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 import {
   Dialog,
   DialogContent,
@@ -27,8 +28,19 @@ const EmojiPicker = dynamic(() => import("emoji-picker-react"), {
   ssr: false,
 });
 
+export interface ChatInputMentionCandidate {
+  userId: string;
+  displayName: string;
+  avatar?: string;
+}
+
+export interface ChatInputSendMeta {
+  mentionAll?: boolean;
+  mentionUserIds?: string[];
+}
+
 interface ChatInputProps {
-  onSend: (text: string) => void | Promise<void>;
+  onSend: (text: string, meta?: ChatInputSendMeta) => void | Promise<void>;
   onSendAttachments?: (files: File[]) => Promise<void> | void;
   isUploadingAttachments?: boolean;
   uploadProgressPercent?: number;
@@ -39,7 +51,19 @@ interface ChatInputProps {
   onTyping?: () => void;
   onStopTyping?: () => void;
   onOpenPollDialog?: () => void;
+  mentionCandidates?: ChatInputMentionCandidate[];
+  enableMentionAll?: boolean;
 }
+
+const normalizeMentionKeyword = (value: string): string =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+const compactMentionKeyword = (value: string): string =>
+  normalizeMentionKeyword(value).replace(/\s+/g, "");
 
 export function ChatInput({
   onSend,
@@ -53,6 +77,8 @@ export function ChatInput({
   onTyping,
   onStopTyping,
   onOpenPollDialog,
+  mentionCandidates = [],
+  enableMentionAll = true,
 }: ChatInputProps) {
   const [value, setValue] = useState("");
   const [isRecording, setIsRecording] = useState(false);
@@ -60,7 +86,13 @@ export function ChatInput({
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [emojiDialogOpen, setEmojiDialogOpen] = useState(false);
   const [isSendingAttachment, setIsSendingAttachment] = useState(false);
+  const [mentionMenuOpen, setMentionMenuOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionStartIndex, setMentionStartIndex] = useState<number | null>(null);
+  const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
+  const [mentionTokenToUserId, setMentionTokenToUserId] = useState<Record<string, string>>({});
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -68,6 +100,51 @@ export function ChatInput({
   const recordedChunksRef = useRef<BlobPart[]>([]);
   const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const discardRecordingRef = useRef(false);
+
+  const mentionSuggestions = useMemo(() => {
+    const normalizedQuery = compactMentionKeyword(mentionQuery);
+    const suggestions: Array<
+      { type: "all"; label: string; token: string } | { type: "user"; label: string; token: string; userId: string; avatar?: string }
+    > = [];
+
+    if (
+      enableMentionAll &&
+      (!normalizedQuery || "all".includes(normalizedQuery))
+    ) {
+      suggestions.push({ type: "all", label: "All thành viên", token: "all" });
+    }
+
+    const memberSuggestions = mentionCandidates
+      .map((member) => {
+        const compactName = compactMentionKeyword(member.displayName);
+        return {
+          type: "user" as const,
+          label: member.displayName,
+          token: compactName || `user${member.userId.slice(-4)}`,
+          userId: member.userId,
+          avatar: member.avatar,
+          searchable: `${compactName} ${normalizeMentionKeyword(member.displayName)}`,
+        };
+      })
+      .filter((member) =>
+        !normalizedQuery || member.searchable.includes(normalizedQuery),
+      )
+      .slice(0, 8)
+      .map(({ searchable, ...rest }) => rest);
+
+    return [...suggestions, ...memberSuggestions];
+  }, [enableMentionAll, mentionCandidates, mentionQuery]);
+
+  useEffect(() => {
+    if (!mentionMenuOpen) {
+      setMentionActiveIndex(0);
+      return;
+    }
+
+    if (mentionActiveIndex >= mentionSuggestions.length) {
+      setMentionActiveIndex(Math.max(mentionSuggestions.length - 1, 0));
+    }
+  }, [mentionActiveIndex, mentionMenuOpen, mentionSuggestions.length]);
 
   useEffect(() => {
     return () => {
@@ -236,20 +313,131 @@ export function ChatInput({
     setEmojiDialogOpen(false);
   }, []);
 
+  const parseMentionMetaFromText = useCallback(
+    (text: string): ChatInputSendMeta => {
+      const mentionRegex = /(^|\s)@([^\s@.,!?;:]+)/g;
+      const mentionUserIdSet = new Set<string>();
+      let mentionAll = false;
+      let match: RegExpExecArray | null = mentionRegex.exec(text);
+
+      while (match) {
+        const token = compactMentionKeyword(match[2] || "");
+        if (!token) {
+          match = mentionRegex.exec(text);
+          continue;
+        }
+
+        if (token === "all") {
+          mentionAll = true;
+        }
+
+        const mappedUserId = mentionTokenToUserId[token];
+        if (mappedUserId) {
+          mentionUserIdSet.add(mappedUserId);
+        }
+
+        match = mentionRegex.exec(text);
+      }
+
+      return {
+        mentionAll: mentionAll || undefined,
+        mentionUserIds:
+          mentionUserIdSet.size > 0 ? Array.from(mentionUserIdSet) : undefined,
+      };
+    },
+    [mentionTokenToUserId],
+  );
+
+  const applyMentionSuggestion = useCallback(
+    (index: number) => {
+      const suggestion = mentionSuggestions[index];
+      if (!suggestion) return;
+      if (mentionStartIndex === null) return;
+
+      const input = inputRef.current;
+      const currentCursor = input?.selectionStart ?? value.length;
+      let nextToken = suggestion.token;
+
+      if (suggestion.type === "user") {
+        const baseToken = compactMentionKeyword(nextToken);
+        let candidateToken = baseToken || `user${suggestion.userId.slice(-4)}`;
+        let suffix = 2;
+
+        while (
+          mentionTokenToUserId[candidateToken] &&
+          mentionTokenToUserId[candidateToken] !== suggestion.userId
+        ) {
+          candidateToken = `${baseToken}${suffix}`;
+          suffix += 1;
+        }
+
+        nextToken = candidateToken;
+        setMentionTokenToUserId((prev) => ({
+          ...prev,
+          [nextToken]: suggestion.userId,
+        }));
+      }
+
+      const replacement = `@${nextToken} `;
+      const nextValue =
+        value.slice(0, mentionStartIndex) +
+        replacement +
+        value.slice(currentCursor);
+
+      setValue(nextValue);
+      setMentionMenuOpen(false);
+      setMentionQuery("");
+      setMentionStartIndex(null);
+
+      requestAnimationFrame(() => {
+        const position = mentionStartIndex + replacement.length;
+        input?.focus();
+        input?.setSelectionRange(position, position);
+      });
+    },
+    [mentionMenuOpen, mentionQuery, mentionStartIndex, mentionSuggestions, mentionTokenToUserId, value],
+  );
+
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
+    if (mentionMenuOpen && mentionSuggestions.length > 0) {
+      applyMentionSuggestion(mentionActiveIndex);
+      return;
+    }
+
     if (value.trim() && !disabled && !isSendingAttachment) {
-      Promise.resolve(onSend(value)).catch((error) => {
+      const mentionMeta = parseMentionMetaFromText(value);
+      Promise.resolve(onSend(value, mentionMeta)).catch((error) => {
         console.error("handleSubmit error:", error);
       });
       setValue("");
+      setMentionMenuOpen(false);
+      setMentionQuery("");
+      setMentionStartIndex(null);
       if (onStopTyping) onStopTyping();
     }
   };
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      setValue(e.target.value);
+      const nextValue = e.target.value;
+      setValue(nextValue);
+
+      const cursorPos = e.target.selectionStart ?? nextValue.length;
+      const beforeCursor = nextValue.slice(0, cursorPos);
+      const mentionMatch = beforeCursor.match(/(?:^|\s)@([^\s@]*)$/);
+
+      if (mentionMatch) {
+        const token = mentionMatch[1] || "";
+        const atPos = beforeCursor.lastIndexOf("@");
+        setMentionStartIndex(atPos);
+        setMentionQuery(token);
+        setMentionMenuOpen(true);
+      } else {
+        setMentionMenuOpen(false);
+        setMentionStartIndex(null);
+        setMentionQuery("");
+      }
 
       if (onTyping) onTyping();
 
@@ -358,8 +546,37 @@ export function ChatInput({
 
         <form onSubmit={handleSubmit} className="flex-1 relative">
           <Input
+            ref={inputRef}
             value={value}
             onChange={handleChange}
+            onKeyDown={(event) => {
+              if (!mentionMenuOpen || mentionSuggestions.length === 0) return;
+
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setMentionActiveIndex((prev) =>
+                  Math.min(prev + 1, mentionSuggestions.length - 1),
+                );
+                return;
+              }
+
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setMentionActiveIndex((prev) => Math.max(prev - 1, 0));
+                return;
+              }
+
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setMentionMenuOpen(false);
+                return;
+              }
+
+              if (event.key === "Enter") {
+                event.preventDefault();
+                applyMentionSuggestion(mentionActiveIndex);
+              }
+            }}
             placeholder="Nhập tin nhắn..."
             disabled={disabled}
             className="w-full bg-slate-50 border border-slate-200/80 shadow-sm h-12 rounded-2xl pl-5 pr-12 focus-visible:ring-2 focus-visible:ring-blue-500/20 focus-visible:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -372,6 +589,51 @@ export function ChatInput({
           >
             <Smile className="w-5 h-5" />
           </button>
+          {mentionMenuOpen && (
+            <div className="absolute left-0 right-0 top-full z-30 mt-2 max-h-56 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl">
+              {mentionSuggestions.length === 0 ? (
+                <div className="rounded-xl px-3 py-2 text-sm text-slate-500">
+                  Không tìm thấy thành viên
+                </div>
+              ) : (
+                mentionSuggestions.map((suggestion, index) => (
+                  <button
+                    key={`${suggestion.type}-${suggestion.token}-${index}`}
+                    type="button"
+                    onClick={() => applyMentionSuggestion(index)}
+                    className={`flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-colors ${
+                      index === mentionActiveIndex
+                        ? "bg-blue-50 text-blue-700"
+                        : "hover:bg-slate-50"
+                    }`}
+                  >
+                    {suggestion.type === "all" ? (
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">
+                        @
+                      </span>
+                    ) : (
+                      <PresignedAvatar
+                        avatarKey={suggestion.avatar}
+                        displayName={suggestion.label}
+                        className="h-8 w-8"
+                        fallbackClassName="bg-slate-200 text-slate-700 text-xs font-semibold"
+                      />
+                    )}
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">
+                        {suggestion.type === "all" ? "@all" : suggestion.label}
+                      </p>
+                      <p className="truncate text-[11px] text-slate-500">
+                        {suggestion.type === "all"
+                          ? "Nhắc toàn bộ thành viên"
+                          : `@${suggestion.token}`}
+                      </p>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
         </form>
 
         <button

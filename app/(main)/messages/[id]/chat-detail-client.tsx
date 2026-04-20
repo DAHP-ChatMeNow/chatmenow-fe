@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/dialog";
 import { ChatHeader } from "@/components/chat/chat-header";
 import { ChatInput } from "@/components/chat/chat-input";
+import type { ChatInputSendMeta } from "@/components/chat/chat-input";
 import { CreatePollDialog, PollBubble } from "@/components/chat/poll";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -168,28 +169,139 @@ const normalizeLightMarkdown = (value: string): string => {
   return value.replace(/\*\*\*([^*\n]+?:)\*\*/g, "**$1**");
 };
 
-const renderInlineBold = (text: string) => {
+const normalizeMentionToken = (value: string): string =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/^@/, "")
+    .replace(/\s+/g, "");
+
+const renderTextWithMentions = (params: {
+  text: string;
+  keyPrefix: string;
+  isMe?: boolean;
+  isBold?: boolean;
+  resolveMentionUserId?: (token: string) => string | undefined;
+  onMentionUserClick?: (userId: string) => void;
+}) => {
+  const {
+    text,
+    keyPrefix,
+    isMe,
+    isBold,
+    resolveMentionUserId,
+    onMentionUserClick,
+  } = params;
+  const mentionRegex = /(@[^\s@.,!?;:]+)/g;
+  const segments = text.split(mentionRegex);
+
+  return segments.map((segment, index) => {
+    if (!segment) return null;
+
+    if (!segment.startsWith("@")) {
+      return (
+        <Fragment key={`${keyPrefix}-text-${index}`}>{segment}</Fragment>
+      );
+    }
+
+    const token = normalizeMentionToken(segment);
+    const isMentionAll = token === "all";
+    const mentionUserId =
+      !isMentionAll && resolveMentionUserId ? resolveMentionUserId(token) : undefined;
+    const mentionClassName = isMe
+      ? "inline-flex items-center rounded-md bg-white/20 px-1 py-0.5 font-semibold text-white"
+      : "inline-flex items-center rounded-md bg-blue-100 px-1 py-0.5 font-semibold text-blue-700";
+
+    if (mentionUserId && onMentionUserClick) {
+      return (
+        <button
+          key={`${keyPrefix}-mention-${index}`}
+          type="button"
+          onClick={() => onMentionUserClick(mentionUserId)}
+          className={`${mentionClassName} ${isBold ? "font-bold" : ""}`}
+        >
+          {segment}
+        </button>
+      );
+    }
+
+    return (
+      <span
+        key={`${keyPrefix}-mention-${index}`}
+        className={`${mentionClassName} ${isBold ? "font-bold" : ""}`}
+      >
+        {segment}
+      </span>
+    );
+  });
+};
+
+const renderInlineBoldWithMentions = (params: {
+  text: string;
+  lineIndex: number;
+  isMe?: boolean;
+  resolveMentionUserId?: (token: string) => string | undefined;
+  onMentionUserClick?: (userId: string) => void;
+}) => {
+  const { text, lineIndex, isMe, resolveMentionUserId, onMentionUserClick } = params;
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
 
   return parts.map((part, index) => {
     const match = part.match(/^\*\*([^*]+)\*\*$/);
     if (match) {
-      return <strong key={`bold-${index}`}>{match[1]}</strong>;
+      return (
+        <strong key={`bold-${lineIndex}-${index}`}>
+          {renderTextWithMentions({
+            text: match[1],
+            keyPrefix: `bold-${lineIndex}-${index}`,
+            isMe,
+            isBold: true,
+            resolveMentionUserId,
+            onMentionUserClick,
+          })}
+        </strong>
+      );
     }
 
-    return <Fragment key={`text-${index}`}>{part}</Fragment>;
+    return (
+      <Fragment key={`text-${lineIndex}-${index}`}>
+        {renderTextWithMentions({
+          text: part,
+          keyPrefix: `text-${lineIndex}-${index}`,
+          isMe,
+          resolveMentionUserId,
+          onMentionUserClick,
+        })}
+      </Fragment>
+    );
   });
 };
 
-const renderMessageContent = (content?: string) => {
+const renderMessageContent = (
+  content?: string,
+  options?: {
+    isMe?: boolean;
+    resolveMentionUserId?: (token: string) => string | undefined;
+    onMentionUserClick?: (userId: string) => void;
+  },
+) => {
   if (!content) return null;
 
   const normalized = normalizeLightMarkdown(content);
   const lines = normalized.split("\n");
+  const { isMe, resolveMentionUserId, onMentionUserClick } = options || {};
 
   return lines.map((line, index) => (
     <p key={`line-${index}`} className={index === 0 ? "" : "mt-1"}>
-      {renderInlineBold(line)}
+      {renderInlineBoldWithMentions({
+        text: line,
+        lineIndex: index,
+        isMe,
+        resolveMentionUserId,
+        onMentionUserClick,
+      })}
     </p>
   ));
 };
@@ -880,6 +992,48 @@ const getConversationMemberUserId = (
   return member.userId._id || member.userId.id;
 };
 
+const normalizeMentionKeyword = (value: string): string =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+const compactMentionKeyword = (value: string): string =>
+  normalizeMentionKeyword(value).replace(/\s+/g, "");
+
+const extractMentionTokens = (text: string): string[] => {
+  const tokens: string[] = [];
+  const mentionRegex = /(^|\s)@([^\s@.,!?;:]+)/g;
+  let match: RegExpExecArray | null = mentionRegex.exec(text);
+
+  while (match) {
+    const token = normalizeMentionKeyword(match[2] || "");
+    if (token) tokens.push(token);
+    match = mentionRegex.exec(text);
+  }
+
+  return Array.from(new Set(tokens));
+};
+
+const normalizeEntityUserId = (value: unknown): string | undefined => {
+  if (!value) return undefined;
+  if (typeof value === "string") return value;
+  if (typeof value === "object") {
+    const obj = value as { _id?: string; id?: string; userId?: string };
+    return obj._id || obj.id || obj.userId;
+  }
+  return undefined;
+};
+
+const getMessageReadByUserIds = (message: Message): string[] => {
+  if (!Array.isArray(message.readBy)) return [];
+
+  return message.readBy
+    .map((item) => normalizeEntityUserId(item))
+    .filter((item): item is string => Boolean(item));
+};
+
 const buildReplyPreview = (message?: Message): string => {
   if (!message) return "Tin nhắn gốc không còn khả dụng";
   if (message.isUnsent || message.unsentAt) return "Tin nhắn đã được thu hồi";
@@ -959,6 +1113,7 @@ const EMOTE_LABEL_MAP: Record<string, string> = {
 
 type ReactionUserInfo = { userId: string; displayName: string; avatar?: string };
 type ReactionEntry = { emoji: string; count: number; isMine: boolean; reactors: ReactionUserInfo[] };
+type ReadReceiptUserInfo = { userId: string; displayName: string; avatar?: string };
 
 function CombinedReactionBadge({
   entries,
@@ -1708,7 +1863,75 @@ export default function ChatDetailClient() {
     });
   }, [currentLastReadAt, currentUserId, messages, unreadCount]);
 
+  const otherConversationMemberIds = useMemo(() => {
+    if (!conversation?.members?.length || !currentUserId) return [];
+
+    return conversation.members
+      .map((member: { userId?: string | { _id?: string; id?: string } }) =>
+        getConversationMemberUserId(
+          member as { userId?: string | { _id?: string; id?: string } },
+        ),
+      )
+      .filter(
+        (memberId: string | undefined): memberId is string =>
+          Boolean(memberId) && memberId !== currentUserId,
+      );
+  }, [conversation?.members, currentUserId]);
+
+  const otherConversationMemberIdSet = useMemo(
+    () => new Set(otherConversationMemberIds),
+    [otherConversationMemberIds],
+  );
+
+  const lastAutoMarkedReadTokenRef = useRef("");
+
+  const attemptAutoMarkConversationAsRead = useCallback(() => {
+    if (!conversationId || aiMode || unreadCount <= 0) return;
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+      return;
+    }
+
+    const latestMessage = messages[messages.length - 1];
+    const latestMessageId =
+      latestMessage?.id ||
+      latestMessage?._id ||
+      String(latestMessage?.createdAt || conversation?.updatedAt || "");
+    const nextToken = `${conversationId}:${unreadCount}:${latestMessageId}`;
+
+    if (lastAutoMarkedReadTokenRef.current === nextToken) return;
+    lastAutoMarkedReadTokenRef.current = nextToken;
+    markConversationAsRead(conversationId);
+  }, [
+    aiMode,
+    conversation?.updatedAt,
+    conversationId,
+    markConversationAsRead,
+    messages,
+    unreadCount,
+  ]);
+
+  useEffect(() => {
+    attemptAutoMarkConversationAsRead();
+  }, [attemptAutoMarkConversationAsRead]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleVisibleRead = () => {
+      attemptAutoMarkConversationAsRead();
+    };
+
+    window.addEventListener("focus", handleVisibleRead);
+    document.addEventListener("visibilitychange", handleVisibleRead);
+
+    return () => {
+      window.removeEventListener("focus", handleVisibleRead);
+      document.removeEventListener("visibilitychange", handleVisibleRead);
+    };
+  }, [attemptAutoMarkConversationAsRead]);
+
   const isGroupConversation = conversation?.type === "group";
+
   const isCurrentUserGroupAdmin = useMemo(() => {
     if (!isGroupConversation || !currentUserId) return false;
 
@@ -1723,13 +1946,32 @@ export default function ChatDetailClient() {
     return currentMember?.role === "admin";
   }, [conversation?.members, currentUserId, isGroupConversation]);
 
-  // Build a map userId → { displayName, avatar } from conversation members + current user
+  // Build a map userId → { displayName, avatar } from conversation members + current user + messages.
   const memberDisplayMap = useMemo(() => {
     const map = new Map<string, { displayName: string; avatar?: string }>();
+    const upsertMember = (
+      userId: string,
+      displayName: string,
+      avatar?: string,
+    ) => {
+      const uid = String(userId || "").trim();
+      const name = String(displayName || "").trim();
+      if (!uid || !name) return;
+      if (!map.has(uid)) {
+        map.set(uid, { displayName: name, avatar });
+        return;
+      }
+
+      const existing = map.get(uid);
+      map.set(uid, {
+        displayName: existing?.displayName || name,
+        avatar: existing?.avatar || avatar,
+      });
+    };
 
     // Add current user
     if (currentUserId && user?.displayName) {
-      map.set(currentUserId, { displayName: user.displayName, avatar: user.avatar });
+      upsertMember(currentUserId, user.displayName, user.avatar);
     }
 
     const rawMembers = (conversation?.members || []) as Array<{
@@ -1755,12 +1997,55 @@ export default function ChatDetailClient() {
       }
 
       if (uid && displayName) {
-        map.set(uid, { displayName, avatar });
+        upsertMember(uid, displayName, avatar);
       }
     });
 
+    messages.forEach((msg) => {
+      const sender = msg.senderId;
+      if (!sender || typeof sender === "string") return;
+
+      const uid = String(sender._id || sender.id || "").trim();
+      const name = String(sender.displayName || "").trim();
+      const avatar =
+        typeof sender.avatar === "string" ? sender.avatar : undefined;
+      upsertMember(uid, name, avatar);
+    });
+
     return map;
-  }, [conversation?.members, currentUserId, user?.displayName, user?.avatar]);
+  }, [
+    conversation?.members,
+    currentUserId,
+    messages,
+    user?.displayName,
+    user?.avatar,
+  ]);
+
+  const mentionableMembers = useMemo(() => {
+    if (!isGroupConversation) return [];
+
+    return Array.from(memberDisplayMap.entries())
+      .map(([userId, profile]) => {
+        const displayName = String(profile?.displayName || "").trim();
+
+        return {
+          userId,
+          displayName,
+          avatar: profile?.avatar,
+          normalizedDisplayName: normalizeMentionKeyword(displayName),
+          normalizedCompactName: compactMentionKeyword(displayName),
+          normalizedWords: normalizeMentionKeyword(displayName)
+            .split(/\s+/)
+            .filter(Boolean),
+        };
+      })
+      .filter(
+        (member) =>
+          Boolean(member.userId) &&
+          Boolean(member.displayName) &&
+          member.userId !== currentUserId,
+      );
+  }, [currentUserId, isGroupConversation, memberDisplayMap]);
 
   // Collect all image attachments across all messages for the lightbox sidebar
   const allConversationImages = useMemo((): LightboxImage[] => {
@@ -1860,6 +2145,8 @@ export default function ChatDetailClient() {
   const [selectedForwardConversationId, setSelectedForwardConversationId] =
     useState<string>("");
   const [isForwarding, setIsForwarding] = useState(false);
+  const [readReceiptsDialogOpen, setReadReceiptsDialogOpen] = useState(false);
+  const [readReceiptsUsers, setReadReceiptsUsers] = useState<ReadReceiptUserInfo[]>([]);
   const [backgroundKey, setBackgroundKey] =
     useState<ChatBackgroundKey>("default");
 
@@ -2334,6 +2621,77 @@ export default function ChatDetailClient() {
   useEffect(() => {
     if (!socket.current || !conversationId) return;
 
+    const handleConversationRead = (payload: any) => {
+      const payloadConversationId = String(payload?.conversationId || "").trim();
+      if (!payloadConversationId || payloadConversationId !== conversationId) return;
+
+      const readerId = normalizeEntityUserId(
+        payload?.readerId || payload?.userId || payload?.memberId,
+      );
+      if (!readerId || readerId === currentUserId) return;
+
+      const readAtRaw = payload?.lastReadAt || payload?.readAt || payload?.timestamp;
+      const readAtDate = readAtRaw ? new Date(readAtRaw) : new Date();
+      const readAtMs = Number.isNaN(readAtDate.getTime())
+        ? Number.POSITIVE_INFINITY
+        : readAtDate.getTime();
+
+      queryClient.setQueryData<MessagesResponse>(
+        ["messages", conversationId],
+        (old) => {
+          if (!old?.messages?.length) return old;
+
+          return {
+            ...old,
+            messages: old.messages.map((message) => {
+              const senderId = getMessageSenderId(message);
+              const createdAtMs = new Date(message.createdAt).getTime();
+
+              if (
+                senderId === readerId ||
+                Number.isNaN(createdAtMs) ||
+                createdAtMs > readAtMs
+              ) {
+                return message;
+              }
+
+              const nextReadBySet = new Set(getMessageReadByUserIds(message));
+              nextReadBySet.add(readerId);
+              const nextReadBy = Array.from(nextReadBySet);
+
+              const isCurrentUserSender = Boolean(
+                currentUserId && senderId === currentUserId,
+              );
+              const hasReadByOther = nextReadBy.some(
+                (userId) => userId !== currentUserId,
+              );
+
+              return {
+                ...message,
+                readBy: nextReadBy,
+                isRead: isCurrentUserSender ? hasReadByOther : message.isRead,
+                readStatus: isCurrentUserSender
+                  ? hasReadByOther
+                    ? "read"
+                    : "unread"
+                  : message.readStatus,
+              };
+            }),
+          };
+        },
+      );
+    };
+
+    socket.current.on("conversation:read", handleConversationRead);
+
+    return () => {
+      socket.current?.off("conversation:read", handleConversationRead);
+    };
+  }, [conversationId, currentUserId, queryClient, socket]);
+
+  useEffect(() => {
+    if (!socket.current || !conversationId) return;
+
     const handlePinnedUpdated = (payload: { conversationId?: string }) => {
       if (!payload?.conversationId || payload.conversationId !== conversationId) {
         return;
@@ -2462,7 +2820,7 @@ export default function ChatDetailClient() {
     [clearLongPressTimer],
   );
 
-  const handleSendMessage = async (text: string) => {
+  const handleSendMessage = async (text: string, mentionMeta?: ChatInputSendMeta) => {
     if (!text.trim()) return;
 
     if (isConversationBlocked) {
@@ -2479,11 +2837,35 @@ export default function ChatDetailClient() {
       return;
     }
 
+    const mentionTokens = extractMentionTokens(text);
+    const mentionAllFromText =
+      isGroupConversation && mentionTokens.some((token) => token === "all");
+    const mentionAll = Boolean(mentionMeta?.mentionAll || mentionAllFromText);
+    const mentionUserIds = mentionTokens
+      .filter((token) => token !== "all")
+      .flatMap((token) =>
+        mentionableMembers
+          .filter((member) => {
+            if (!member.normalizedDisplayName) return false;
+            if (member.normalizedDisplayName.includes(token)) return true;
+            if (member.normalizedCompactName.includes(token)) return true;
+            return member.normalizedWords.some((word) => word.startsWith(token));
+          })
+          .map((member) => member.userId),
+      )
+      .filter((userId, index, arr) => Boolean(userId) && arr.indexOf(userId) === index);
+    const finalMentionUserIds = Array.from(
+      new Set([...(mentionMeta?.mentionUserIds || []), ...mentionUserIds]),
+    ).filter(Boolean);
+
     await sendMessage({
       conversationId,
       content: text,
       type: "text",
       replyToMessageId: replyingToMessageId || undefined,
+      mentionAll: mentionAll || undefined,
+      mentionUserIds:
+        finalMentionUserIds.length > 0 ? finalMentionUserIds : undefined,
     });
     setReplyingToMessageId(null);
   };
@@ -2931,7 +3313,7 @@ export default function ChatDetailClient() {
                             }`}
                           >
                             <p
-                              className={`text-[13px] font-semibold ${
+                              className={`text-[12px] font-semibold ${
                                 isMySystemMessage
                                   ? "text-white"
                                   : "text-slate-800"
@@ -2940,7 +3322,7 @@ export default function ChatDetailClient() {
                               {callTitle}
                             </p>
                             <p
-                              className={`mt-0.5 text-[11px] ${
+                              className={`mt-0.5 text-[10px] ${
                                 isMySystemMessage
                                   ? "text-blue-100"
                                   : "text-slate-600"
@@ -3097,17 +3479,99 @@ export default function ChatDetailClient() {
                   const outgoingActionClass = isPlainAttachmentBubble
                     ? "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
                     : "text-blue-100 hover:bg-blue-500/40 hover:text-white";
+                  const normalizedReadStatus = String(
+                    msg.readStatus || "",
+                  ).toLowerCase();
+                  const readByOthersCount = isMe
+                    ? getMessageReadByUserIds(msg).filter((userId) =>
+                        otherConversationMemberIdSet.has(userId),
+                      ).length
+                    : 0;
+                  const readByOtherUsers = isMe
+                    ? getMessageReadByUserIds(msg)
+                        .filter(
+                          (userId, index, arr) =>
+                            userId !== currentUserId && arr.indexOf(userId) === index,
+                        )
+                        .map((userId) => {
+                          const resolved = memberDisplayMap.get(userId);
+                          return {
+                            userId,
+                            displayName: resolved?.displayName || "Người dùng",
+                            avatar: resolved?.avatar,
+                          };
+                        })
+                    : [];
+                  const isReadByBackend =
+                    normalizedReadStatus === "read" || msg.isRead === true;
+                  const isReadByFallback = readByOthersCount > 0;
+                  const isOutgoingRead = isReadByBackend || isReadByFallback;
+                  const outgoingReadStateText =
+                    msg.status === "sending"
+                      ? "Đang gửi..."
+                      : msg.status === "failed"
+                        ? "Gửi thất bại"
+                        : otherConversationMemberIds.length > 0 && isOutgoingRead
+                          ? isGroupConversation
+                            ? `Đã xem bởi ${Math.max(readByOthersCount, 1)}`
+                            : "Đã xem"
+                          : isMe
+                            ? "Chưa đọc"
+                            : "";
                   const statusText =
                     msg.status === "sending"
                       ? "Đang gửi..."
                       : msg.status === "failed"
                         ? "Gửi thất bại"
-                        : messageTime;
+                        : isMe
+                          ? outgoingReadStateText
+                            ? `${outgoingReadStateText}${messageTime ? ` • ${messageTime}` : ""}`
+                            : messageTime
+                          : messageTime;
                   const noteText = isUnsent
                     ? "Đã thu hồi"
                     : msg.isEdited
                       ? "Đã chỉnh sửa"
                       : "";
+                  const messageMentionIds = Array.isArray(msg.mentions)
+                    ? msg.mentions.map((item) => String(item || "")).filter(Boolean)
+                    : [];
+                  const resolveMentionUserId = (token: string): string | undefined => {
+                    const normalizedToken = normalizeMentionToken(token);
+                    if (!normalizedToken || normalizedToken === "all") return undefined;
+
+                    if (messageMentionIds.length === 1) {
+                      return messageMentionIds[0];
+                    }
+
+                    const matchedByName = Array.from(memberDisplayMap.entries())
+                      .filter(([, info]) => {
+                        const compactName = normalizeMentionToken(info.displayName || "");
+                        if (!compactName) return false;
+                        if (compactName === normalizedToken) return true;
+                        if (compactName.includes(normalizedToken)) return true;
+                        return compactName
+                          .split(/\s+/)
+                          .some((word) => word.startsWith(normalizedToken));
+                      })
+                      .map(([userId]) => userId);
+
+                    if (matchedByName.length === 1) return matchedByName[0];
+
+                    if (messageMentionIds.length > 0 && matchedByName.length > 1) {
+                      const intersection = matchedByName.find((id) =>
+                        messageMentionIds.includes(id),
+                      );
+                      if (intersection) return intersection;
+                    }
+
+                    return undefined;
+                  };
+                  const canOpenReadReceipts =
+                    isMe &&
+                    !isUnsent &&
+                    readByOtherUsers.length > 0 &&
+                    outgoingReadStateText.toLowerCase().includes("đã xem");
 
                   const handleReplyMessage = () => {
                     if (!messageId || !canReply) return;
@@ -3201,7 +3665,7 @@ export default function ChatDetailClient() {
                           onTouchEnd={clearLongPressTimer}
                           onTouchCancel={clearLongPressTimer}
                           onTouchMove={clearLongPressTimer}
-                          className={`group rounded-2xl text-[14px] md:text-[15px] max-w-[84%] md:max-w-[70%] xl:max-w-[64%] ${
+                          className={`group rounded-2xl text-[13px] md:text-[14px] max-w-[84%] md:max-w-[70%] xl:max-w-[64%] ${
                             isPlainAttachmentBubble
                               ? "w-fit p-0 bg-transparent text-slate-800 shadow-none"
                               : isUnsent
@@ -3338,7 +3802,13 @@ export default function ChatDetailClient() {
                             </p>
                           ) : parsedContent ? (
                             <div className={hasSharedPost ? "px-2.5 pb-1 pt-1.5" : ""}>
-                              {renderMessageContent(parsedContent)}
+                              {renderMessageContent(parsedContent, {
+                                isMe,
+                                resolveMentionUserId,
+                                onMentionUserClick: (userId) => {
+                                  router.push(`/profile/${userId}`);
+                                },
+                              })}
                             </div>
                           ) : null}
                           {msg.type === "audio" && visibleAttachments.length === 0 && (
@@ -3502,12 +3972,26 @@ export default function ChatDetailClient() {
                                 </span>
                               )}
                               {statusText && (
-                                <span
-                                  className={`text-[10px] ${outgoingMetaClass}`}
-                                  suppressHydrationWarning
-                                >
-                                  {statusText}
-                                </span>
+                                canOpenReadReceipts ? (
+                                  <button
+                                    type="button"
+                                    className={`text-[10px] underline-offset-2 hover:underline ${outgoingMetaClass}`}
+                                    suppressHydrationWarning
+                                    onClick={() => {
+                                      setReadReceiptsUsers(readByOtherUsers);
+                                      setReadReceiptsDialogOpen(true);
+                                    }}
+                                  >
+                                    {statusText}
+                                  </button>
+                                ) : (
+                                  <span
+                                    className={`text-[10px] ${outgoingMetaClass}`}
+                                    suppressHydrationWarning
+                                  >
+                                    {statusText}
+                                  </span>
+                                )
                               )}
 
                               {/* Emote button for my messages — inline before 3-dot */}
@@ -3606,7 +4090,8 @@ export default function ChatDetailClient() {
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent
                                     align="end"
-                                    className="w-40"
+                                    sideOffset={8}
+                                    className="z-[120] w-44 rounded-xl border border-slate-200 bg-white p-1.5 text-slate-800 shadow-xl"
                                   >
                                     {canReply && (
                                       <DropdownMenuItem
@@ -3708,6 +4193,60 @@ export default function ChatDetailClient() {
           {blockedMessage}
         </div>
       )}
+
+      <Dialog
+        open={readReceiptsDialogOpen}
+        onOpenChange={setReadReceiptsDialogOpen}
+      >
+        <DialogContent className="overflow-hidden border border-slate-200 p-0 sm:max-w-[360px]">
+          <DialogHeader className="border-b border-slate-100 bg-gradient-to-r from-blue-50/70 to-white px-4 py-3">
+            <p className="text-xs font-medium text-slate-500">
+              {readReceiptsUsers.length} người đã xem
+            </p>
+          </DialogHeader>
+          <div className="max-h-72 overflow-y-auto px-3 py-2">
+            {readReceiptsUsers.length > 0 ? (
+              readReceiptsUsers.map((item) => (
+                <button
+                  key={item.userId}
+                  type="button"
+                  onClick={() => {
+                    setReadReceiptsDialogOpen(false);
+                    router.push(`/profile/${item.userId}`);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-slate-50"
+                >
+                  <PresignedAvatar
+                    avatarKey={item.avatar}
+                    displayName={item.displayName}
+                    className="h-9 w-9"
+                    fallbackClassName="bg-blue-100 text-blue-700 text-xs font-semibold"
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-900">
+                      {item.displayName}
+                    </p>
+                    <p className="text-xs text-slate-500">Đã xem tin nhắn</p>
+                  </div>
+                </button>
+              ))
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-3 py-6 text-center text-sm text-slate-500">
+                Chưa có ai xem tin nhắn này
+              </div>
+            )}
+          </div>
+          <DialogFooter className="border-t border-slate-100 bg-white px-4 py-3">
+            <Button
+              variant="outline"
+              onClick={() => setReadReceiptsDialogOpen(false)}
+              className="h-9 w-full border-slate-200 font-medium"
+            >
+              Đóng
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={forwardDialogOpen} onOpenChange={setForwardDialogOpen}>
         <DialogContent className="sm:max-w-lg">
@@ -3928,6 +4467,12 @@ export default function ChatDetailClient() {
         onTyping={handleTyping}
         onStopTyping={handleStopTyping}
         onOpenPollDialog={() => setPollDialogOpen(true)}
+        mentionCandidates={mentionableMembers.map((member) => ({
+          userId: member.userId,
+          displayName: member.displayName,
+          avatar: member.avatar,
+        }))}
+        enableMentionAll={isGroupConversation}
       />
 
       {/* ── Poll Dialog ── */}

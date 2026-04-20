@@ -19,7 +19,7 @@ import {
   NotificationsResponse,
 } from "@/api/notification";
 import { Message } from "@/types/message";
-import { MessagesResponse } from "@/api/chat";
+import { ConversationsResponse, MessagesResponse } from "@/api/chat";
 import { ContactsResponse } from "@/api/contact";
 import { User } from "@/types/user";
 import { formatPresenceStatus } from "@/lib/utils";
@@ -304,16 +304,30 @@ export function SocketProvider({ children }: SocketProviderProps) {
     socketInstance.on("friend_removed", () => {
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
     });
+    const handledRealtimeMessageIds = new Set<string>();
 
     const handleRealtimeMessage = (payload: RealtimeMessagePayload) => {
       const message = normalizeRealtimeMessage(payload);
       if (!message) return;
+      const realtimeMessageId = String(message.id || message._id || "").trim();
+      if (!realtimeMessageId) return;
+      if (handledRealtimeMessageIds.has(realtimeMessageId)) return;
+      handledRealtimeMessageIds.add(realtimeMessageId);
+      if (handledRealtimeMessageIds.size > 500) {
+        const oldestHandledId = handledRealtimeMessageIds.values().next().value;
+        if (oldestHandledId) {
+          handledRealtimeMessageIds.delete(oldestHandledId);
+        }
+      }
+      const messageSenderId = getMessageSenderId(message);
+      const isIncomingMessage = Boolean(
+        userId && messageSenderId && messageSenderId !== userId,
+      );
 
       queryClient.setQueryData(
         ["messages", message.conversationId],
         (oldData: MessagesResponse | undefined) => {
           const oldMessages = oldData?.messages ?? [];
-          const messageSenderId = getMessageSenderId(message);
           const existingIndex = oldMessages.findIndex((item) => {
             const itemId = item.id || item._id;
             const sameOptimisticPayload =
@@ -348,7 +362,35 @@ export function SocketProvider({ children }: SocketProviderProps) {
         },
       );
 
-      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.setQueryData<ConversationsResponse>(
+        ["conversations"],
+        (oldData) => {
+          if (!oldData?.conversations?.length) return oldData;
+
+          return {
+            ...oldData,
+            conversations: oldData.conversations.map((conversation) => {
+              if (conversation.id !== message.conversationId) return conversation;
+
+              const previousUnread = Number(conversation.unreadCount || 0);
+              return {
+                ...conversation,
+                unreadCount: isIncomingMessage
+                  ? previousUnread + 1
+                  : previousUnread,
+                lastMessage: {
+                  ...(conversation.lastMessage || {}),
+                  content: message.content || "",
+                  type: message.type,
+                  createdAt: message.createdAt as Date,
+                  senderId: messageSenderId,
+                },
+                updatedAt: new Date(message.createdAt || Date.now()),
+              };
+            }),
+          };
+        },
+      );
     };
 
     const handleRealtimeMessageUpdated = (payload: RealtimeMessagePayload) => {
@@ -386,7 +428,6 @@ export function SocketProvider({ children }: SocketProviderProps) {
         },
       );
 
-      queryClient.invalidateQueries({ queryKey: ["conversations"] });
     };
 
     const handleRealtimeDeletedForMe = (
