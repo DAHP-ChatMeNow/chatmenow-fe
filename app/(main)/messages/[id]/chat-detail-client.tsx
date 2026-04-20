@@ -58,7 +58,7 @@ import {
 import { MessageSkeleton } from "@/components/skeletons/message-skeleton";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useSocket } from "@/components/providers/socket-provider";
-import { Message } from "@/types/message";
+import { Message, MessageReaction } from "@/types/message";
 import { MessageAttachment } from "@/types/message";
 import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 import { Button } from "@/components/ui/button";
@@ -726,9 +726,11 @@ function AudioMessageBubble({ src, isMe }: { src: string; isMe: boolean }) {
 function MessageAttachmentItem({
   attachment,
   isMe,
+  onImageClick,
 }: {
   attachment: MessageAttachment;
   isMe: boolean;
+  onImageClick?: (url: string) => void;
 }) {
   if (attachment.fileType === FRIEND_CARD_ATTACHMENT_TYPE || attachment.fileType === "contact-card") {
     return <FriendCardBubble attachment={attachment} isMe={isMe} />;
@@ -779,7 +781,11 @@ function MessageAttachmentItem({
 
   if (isImageType) {
     return (
-      <a href={resolvedUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl">
+      <button
+        type="button"
+        onClick={() => onImageClick?.(resolvedUrl)}
+        className="block overflow-hidden rounded-xl cursor-zoom-in focus:outline-none"
+      >
         <Image
           src={resolvedUrl}
           alt={attachment.fileName || "image"}
@@ -788,7 +794,7 @@ function MessageAttachmentItem({
           unoptimized
           className="h-auto w-full max-w-[260px] rounded-xl object-cover transition-transform hover:scale-[1.02]"
         />
-      </a>
+      </button>
     );
   }
 
@@ -940,12 +946,455 @@ const isAiConversation = (conversation: any): boolean => {
   );
 };
 
+const EMOTE_MAP_GLOBAL: Record<string, string> = {
+  like: "👍", love: "❤️", haha: "😂",
+  sad: "😢", angry: "😠", wow: "😮",
+};
+
+const EMOTE_LABEL_MAP: Record<string, string> = {
+  like: "Thích", love: "Yêu thích", haha: "Haha",
+  sad: "Khóc", angry: "Tức giận", wow: "Wow",
+};
+
+type ReactionUserInfo = { userId: string; displayName: string; avatar?: string };
+type ReactionEntry = { emoji: string; count: number; isMine: boolean; reactors: ReactionUserInfo[] };
+
+function CombinedReactionBadge({
+  entries,
+  onToggle,
+  isMe = false,
+}: {
+  entries: ReactionEntry[];
+  onToggle: (emoji: string) => void;
+  isMe?: boolean;
+}) {
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>("all");
+  const tooltipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchCountRef = useRef(0);
+  const touchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const totalCount = entries.reduce((sum, e) => sum + e.count, 0);
+  const hasMyReaction = entries.some((e) => e.isMine);
+  // All reactors flattened (for "Tất cả" tab), deduplicate by userId keeping first occurrence
+  const allReactors = useMemo(() => {
+    const seen = new Set<string>();
+    const result: (ReactionUserInfo & { emoji: string })[] = [];
+    for (const entry of entries) {
+      for (const r of entry.reactors) {
+        if (!seen.has(r.userId)) {
+          seen.add(r.userId);
+          result.push({ ...r, emoji: entry.emoji });
+        }
+      }
+    }
+    return result;
+  }, [entries]);
+
+  const handleMouseEnter = () => {
+    if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
+    setTooltipOpen(true);
+  };
+  const handleMouseLeave = () => {
+    tooltipTimeoutRef.current = setTimeout(() => setTooltipOpen(false), 200);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    e.preventDefault();
+    touchCountRef.current += 1;
+    if (touchTimeoutRef.current) clearTimeout(touchTimeoutRef.current);
+    if (touchCountRef.current === 1) {
+      setTooltipOpen(true);
+      touchTimeoutRef.current = setTimeout(() => { touchCountRef.current = 0; }, 500);
+    } else {
+      touchCountRef.current = 0;
+      setTooltipOpen(false);
+    }
+  };
+
+  // Reset tab when entries change
+  useEffect(() => {
+    if (entries.length > 0 && activeTab !== "all" && !entries.find((e) => e.emoji === activeTab)) {
+      setActiveTab("all");
+    }
+  }, [entries, activeTab]);
+
+  useEffect(() => {
+    return () => {
+      if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
+      if (touchTimeoutRef.current) clearTimeout(touchTimeoutRef.current);
+    };
+  }, []);
+
+  const displayedReactors =
+    activeTab === "all"
+      ? allReactors
+      : entries.find((e) => e.emoji === activeTab)?.reactors ?? [];
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      {/* Combined badge */}
+      <button
+        type="button"
+        onTouchEnd={handleTouchEnd}
+        onClick={() => setTooltipOpen((v) => !v)}
+        title="Xem cảm xúc"
+        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-all duration-150 hover:scale-105 shadow-sm border ${
+          hasMyReaction
+            ? "bg-blue-50 border-blue-300 text-blue-700"
+            : "bg-white border-slate-200 text-slate-600"
+        }`}
+      >
+        {/* Show up to 3 unique emoji icons */}
+        <span className="flex items-center -space-x-0.5">
+          {entries.slice(0, 3).map((e) => (
+            <span key={e.emoji} className="text-sm leading-none">{EMOTE_MAP_GLOBAL[e.emoji] || e.emoji}</span>
+          ))}
+        </span>
+        <span className="font-semibold tabular-nums">{totalCount}</span>
+      </button>
+
+      {/* Dropdown popup — opens LEFT for my messages (right-side), RIGHT for others (left-side) */}
+      {tooltipOpen && entries.length > 0 && (
+        <div
+          className={`absolute bottom-full mb-2 z-50 w-[260px] rounded-2xl bg-white shadow-2xl border border-slate-100 overflow-hidden ${
+            isMe ? "right-0" : "left-0"
+          }`}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+        >
+          {/* Tab bar */}
+          <div className="flex items-center gap-0.5 px-2 pt-2 pb-0 border-b border-slate-100 overflow-x-auto scrollbar-none">
+            {/* "Tất cả" tab */}
+            <button
+              type="button"
+              onClick={() => setActiveTab("all")}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-t-xl text-[11px] font-semibold whitespace-nowrap transition-colors border-b-2 ${
+                activeTab === "all"
+                  ? "border-blue-500 text-blue-600 bg-blue-50/60"
+                  : "border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              Tất cả
+              <span className={`rounded-full px-1 py-0 text-[10px] font-bold ${activeTab === "all" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"}`}>
+                {totalCount}
+              </span>
+            </button>
+
+            {/* Per-emoji tabs */}
+            {entries.map((entry) => (
+              <button
+                key={entry.emoji}
+                type="button"
+                onClick={() => setActiveTab(entry.emoji)}
+                className={`flex items-center gap-1 px-2 py-1.5 rounded-t-xl text-[11px] font-semibold whitespace-nowrap transition-colors border-b-2 ${
+                  activeTab === entry.emoji
+                    ? "border-blue-500 text-blue-600 bg-blue-50/60"
+                    : "border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                <span className="text-base leading-none">{EMOTE_MAP_GLOBAL[entry.emoji] || entry.emoji}</span>
+                <span className={`rounded-full px-1 py-0 text-[10px] font-bold ${activeTab === entry.emoji ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"}`}>
+                  {entry.count}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* User list */}
+          <div className="py-1.5 max-h-[200px] overflow-y-auto">
+            {displayedReactors.length === 0 ? (
+              <div className="px-3 py-3 text-center text-xs text-slate-400">Chưa có ai</div>
+            ) : (
+              displayedReactors.map((reactor) => {
+                const emojiToUse = "emoji" in reactor ? (reactor as any).emoji : activeTab;
+                const reactorEntry = entries.find((e) => e.emoji === emojiToUse);
+                const isMineReactor = reactorEntry?.isMine && reactor.userId === reactorEntry.reactors.find((r) => r.userId === reactor.userId)?.userId;
+                return (
+                  <button
+                    key={`${reactor.userId}-${emojiToUse}`}
+                    type="button"
+                    onClick={() => {
+                      if (emojiToUse && emojiToUse !== "all") {
+                        onToggle(emojiToUse);
+                      }
+                      setTooltipOpen(false);
+                    }}
+                    className="flex w-full items-center gap-2.5 px-3 py-1.5 hover:bg-slate-50 transition-colors text-left"
+                  >
+                    <div className="relative shrink-0">
+                      <PresignedAvatar
+                        avatarKey={reactor.avatar}
+                        displayName={reactor.displayName}
+                        className="h-7 w-7"
+                        fallbackClassName="bg-blue-100 text-blue-600"
+                      />
+                      {activeTab === "all" && emojiToUse && (
+                        <span className="absolute -bottom-0.5 -right-0.5 text-[11px] leading-none">
+                          {EMOTE_MAP_GLOBAL[emojiToUse] || emojiToUse}
+                        </span>
+                      )}
+                    </div>
+                    <span className="flex-1 text-[12px] font-medium text-slate-700 truncate">
+                      {reactor.displayName}
+                    </span>
+                    {activeTab !== "all" && (
+                      <span className="text-[10px] text-slate-400 shrink-0">
+                        {isMineReactor ? "Bỏ" : ""}
+                      </span>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+          {/* Arrow — aligns with badge button */}
+          <div className={`absolute -bottom-1.5 w-3 h-3 bg-white border-r border-b border-slate-100 rotate-45 ${
+            isMe ? "right-6" : "left-6"
+          }`} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────── Image Lightbox ───────────────
+type LightboxImage = {
+  url: string;         // raw key or direct URL
+  fileName?: string;
+  senderName?: string;
+  sentAt?: string | Date;
+};
+
+/** Resolves presigned URL and renders a thumbnail */
+function LightboxThumb({ img, index, isActive, onClick }: {
+  img: LightboxImage;
+  index: number;
+  isActive: boolean;
+  onClick: () => void;
+}) {
+  const isDirect = isDirectMediaUrl(img.url);
+  const { data: presigned } = usePresignedUrl(img.url, Boolean(img.url) && !isDirect);
+  const resolved = isDirect ? img.url : (presigned?.viewUrl ?? "");
+  if (!resolved) return (
+    <div className={`w-full aspect-square rounded-lg bg-white/10 animate-pulse ${isActive ? "ring-2 ring-blue-400" : ""}`} />
+  );
+  return (
+    <button
+      data-index={index}
+      type="button"
+      onClick={onClick}
+      className={`relative w-full aspect-square overflow-hidden rounded-lg transition-all duration-150 ${
+        isActive ? "ring-2 ring-blue-400 ring-offset-1 ring-offset-black brightness-100" : "brightness-50 hover:brightness-75"
+      }`}
+    >
+      <Image src={resolved} alt={img.fileName || `Ảnh ${index + 1}`} fill unoptimized className="object-cover" />
+    </button>
+  );
+}
+
+/** Resolves presigned URL and renders the main lightbox image */
+function LightboxMainImage({ img }: { img: LightboxImage }) {
+  const isDirect = isDirectMediaUrl(img.url);
+  const { data: presigned } = usePresignedUrl(img.url, Boolean(img.url) && !isDirect);
+  const resolved = isDirect ? img.url : (presigned?.viewUrl ?? "");
+  if (!resolved) return (
+    <div className="flex items-center justify-center h-80 w-full">
+      <div className="h-16 w-16 rounded-full border-4 border-white/20 border-t-white animate-spin" />
+    </div>
+  );
+  return (
+    <Image
+      key={resolved}
+      src={resolved}
+      alt={img.fileName || "image"}
+      width={1200}
+      height={900}
+      unoptimized
+      className="max-h-[calc(100vh-120px)] max-w-full rounded-xl object-contain shadow-2xl"
+    />
+  );
+}
+
+
+
+function ImageLightbox({
+
+  images,
+  initialIndex,
+  onClose,
+}: {
+  images: LightboxImage[];
+  initialIndex: number;
+  onClose: () => void;
+}) {
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const thumbsRef = useRef<HTMLDivElement>(null);
+
+  const current = images[currentIndex];
+  const hasPrev = currentIndex > 0;
+  const hasNext = currentIndex < images.length - 1;
+
+  const goTo = (index: number) => {
+    setCurrentIndex(Math.max(0, Math.min(images.length - 1, index)));
+  };
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowLeft" && hasPrev) goTo(currentIndex - 1);
+      else if (e.key === "ArrowRight" && hasNext) goTo(currentIndex + 1);
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex, hasPrev, hasNext]);
+
+  // Scroll active thumb into view
+  useEffect(() => {
+    if (!thumbsRef.current) return;
+    const activeThumb = thumbsRef.current.querySelector(`[data-index="${currentIndex}"]`);
+    activeThumb?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [currentIndex]);
+
+  if (!current) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[9999] flex bg-black/95 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      {/* ── Left sidebar: image history ── */}
+      <div
+        className="hidden sm:flex flex-col w-[96px] shrink-0 h-full bg-black/50 border-r border-white/10 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-2 pt-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40 flex items-center gap-1">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          {images.length} ảnh
+        </div>
+        <div
+          ref={thumbsRef}
+          className="flex-1 overflow-y-auto px-2 pb-3 space-y-1.5"
+        >
+          {images.map((img, index) => (
+            <LightboxThumb
+              key={`thumb-${index}`}
+              img={img}
+              index={index}
+              isActive={index === currentIndex}
+              onClick={() => goTo(index)}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* ── Main viewer ── */}
+      <div
+        className="relative flex flex-1 flex-col h-full"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Top bar */}
+        <div className="absolute top-0 inset-x-0 z-10 flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/70 to-transparent pointer-events-none">
+          <div className="pointer-events-auto">
+            {current.senderName && (
+              <p className="text-white text-sm font-semibold leading-tight">{current.senderName}</p>
+            )}
+            {current.sentAt && (
+              <p className="text-white/50 text-xs mt-0.5">
+                {new Date(current.sentAt).toLocaleString("vi-VN", {
+                  day: "2-digit", month: "2-digit", year: "numeric",
+                  hour: "2-digit", minute: "2-digit",
+                })}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-2 pointer-events-auto">
+            {/* Download */}
+            <a
+              href={current.url}
+              download={current.fileName || "image"}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              title="Tải ảnh"
+              className="rounded-full bg-white/10 hover:bg-white/25 p-2 text-white transition-all"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            </a>
+            {/* Close ✕ */}
+            <button
+              type="button"
+              onClick={onClose}
+              title="Đóng (Esc)"
+              aria-label="Đóng"
+              className="rounded-full bg-white/10 hover:bg-red-500/80 p-2 text-white transition-all active:scale-95"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Image + prev/next */}
+        <div className="flex flex-1 items-center justify-center px-14 py-16 relative">
+          {hasPrev && (
+            <button
+              type="button"
+              onClick={() => goTo(currentIndex - 1)}
+              aria-label="Ảnh trước"
+              className="absolute left-2 top-1/2 -translate-y-1/2 z-10 rounded-full bg-white/10 hover:bg-white/25 p-2.5 text-white transition-all active:scale-95"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
+
+          <LightboxMainImage img={current} />
+
+          {hasNext && (
+            <button
+              type="button"
+              onClick={() => goTo(currentIndex + 1)}
+              aria-label="Ảnh tiếp"
+              className="absolute right-2 top-1/2 -translate-y-1/2 z-10 rounded-full bg-white/10 hover:bg-white/25 p-2.5 text-white transition-all active:scale-95"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        {/* Bottom counter */}
+        <div className="absolute bottom-4 inset-x-0 flex justify-center pointer-events-none">
+          <span className="rounded-full bg-black/50 px-3 py-1 text-xs font-medium text-white/70">
+            {currentIndex + 1} / {images.length}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function UnreadSummaryBanner({
   unreadCount,
   isGroupConversation,
   onOpenSummary,
   onMarkAsRead,
   isMarkingRead,
+
 }: {
   unreadCount: number;
   isGroupConversation: boolean;
@@ -1043,7 +1492,10 @@ export default function ChatDetailClient() {
   const [isLoadingJoinGroupInfo, setIsLoadingJoinGroupInfo] = useState(false);
   const [isJoiningGroup, setIsJoiningGroup] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
   const originalPostIdCacheRef = useRef(new Map<string, string>());
+
   const { mutate: markConversationAsRead, isPending: isMarkingConversationAsRead } =
     useMarkConversationAsRead();
 
@@ -1268,6 +1720,86 @@ export default function ChatDetailClient() {
 
     return currentMember?.role === "admin";
   }, [conversation?.members, currentUserId, isGroupConversation]);
+
+  // Build a map userId → { displayName, avatar } from conversation members + current user
+  const memberDisplayMap = useMemo(() => {
+    const map = new Map<string, { displayName: string; avatar?: string }>();
+
+    // Add current user
+    if (currentUserId && user?.displayName) {
+      map.set(currentUserId, { displayName: user.displayName, avatar: user.avatar });
+    }
+
+    const rawMembers = (conversation?.members || []) as Array<{
+      userId?: string | { _id?: string; id?: string; displayName?: string; avatar?: string };
+      displayName?: string;
+      avatar?: string;
+    }>;
+
+    rawMembers.forEach((member) => {
+      const rawUserId = member?.userId;
+      let uid = "";
+      let displayName = "";
+      let avatar: string | undefined;
+
+      if (typeof rawUserId === "string") {
+        uid = rawUserId;
+        displayName = member.displayName || "";
+        avatar = member.avatar;
+      } else if (rawUserId && typeof rawUserId === "object") {
+        uid = rawUserId._id || rawUserId.id || "";
+        displayName = (rawUserId as any).displayName || member.displayName || "";
+        avatar = (rawUserId as any).avatar || member.avatar;
+      }
+
+      if (uid && displayName) {
+        map.set(uid, { displayName, avatar });
+      }
+    });
+
+    return map;
+  }, [conversation?.members, currentUserId, user?.displayName, user?.avatar]);
+
+  // Collect all image attachments across all messages for the lightbox sidebar
+  const allConversationImages = useMemo((): LightboxImage[] => {
+    const result: LightboxImage[] = [];
+    for (const msg of messages) {
+      if (msg.isUnsent) continue;
+      const attachments = msg.attachments || [];
+      if (!attachments.length) continue;
+
+      const senderId = typeof msg.senderId === "object"
+        ? ((msg.senderId as any)?._id || (msg.senderId as any)?.id || "")
+        : String(msg.senderId || "");
+      const senderName =
+        typeof msg.senderId === "object"
+          ? ((msg.senderId as any)?.displayName || "")
+          : (memberDisplayMap.get(senderId)?.displayName || "");
+
+      for (const att of attachments) {
+        const fileType = String(att.fileType || "").toLowerCase();
+        const isImg =
+          fileType === "image" ||
+          fileType.startsWith("image/") ||
+          /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(att.fileName || "") ||
+          /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(att.url || "");
+        if (!isImg) continue;
+
+        const rawKey = att.key || att.url || "";
+        const isDirect = isDirectMediaUrl(rawKey);
+        // For presigned keys we'll use the key; the lightbox will call usePresignedUrl via MessageAttachmentItem
+        // Here we store the key/url and resolve separately
+        result.push({
+          url: rawKey,
+          fileName: att.fileName,
+          senderName: senderName || undefined,
+          sentAt: msg.createdAt,
+        });
+      }
+    }
+    return result;
+  }, [messages, memberDisplayMap]);
+
 
   const { mutateAsync: sendMessage, isPending: isSendingMessage } =
     useSendMessage();
@@ -2599,17 +3131,21 @@ export default function ChatDetailClient() {
                     unpinMessage({ conversationId, messageId });
                   };
 
-                  const EMOTE_MAP: Record<string, string> = {
-                    like: "👍", love: "❤️", haha: "😂",
-                    sad: "😢", angry: "😠", wow: "😮",
-                  };
                   const reactionSummary = (msg.reactions || []).reduce<
-                    Record<string, { count: number; users: string[] }>
+                    Record<string, { count: number; users: string[]; reactors: ReactionUserInfo[] }>
                   >((acc, r: any) => {
-                    const k = r.emoji as string;
-                    if (!acc[k]) acc[k] = { count: 0, users: [] };
+                    const k = String(r.emoji || "");
+                    if (!k) return acc;
+                    if (!acc[k]) acc[k] = { count: 0, users: [], reactors: [] };
+                    const uid = String(r.userId?._id || r.userId?.id || r.userId || "");
                     acc[k].count++;
-                    acc[k].users.push(String(r.userId));
+                    if (uid) acc[k].users.push(uid);
+                    // Resolve display name: from reaction payload, member map, or fallback
+                    const resolved = memberDisplayMap.get(uid);
+                    const displayName =
+                      String(r.userId?.displayName || r.displayName || resolved?.displayName || uid || "Người dùng");
+                    const avatar = r.userId?.avatar || r.avatar || resolved?.avatar;
+                    acc[k].reactors.push({ userId: uid, displayName, avatar });
                     return acc;
                   }, {});
                   const hasReactions = Object.keys(reactionSummary).length > 0;
@@ -2725,13 +3261,24 @@ export default function ChatDetailClient() {
                                         : "flex flex-col gap-2"
                                     }
                                   >
-                                    {imageAttachments.map((attachment, index) => (
-                                      <MessageAttachmentItem
-                                        key={`img-${attachment.key || attachment.url || attachment.fileName}-${index}`}
-                                        attachment={attachment}
-                                        isMe={isMe}
-                                      />
-                                    ))}
+                                    {imageAttachments.map((attachment, attachIdx) => {
+                                      const rawKey = attachment.key || attachment.url || "";
+                                      return (
+                                        <MessageAttachmentItem
+                                          key={`img-${rawKey}-${attachIdx}`}
+                                          attachment={attachment}
+                                          isMe={isMe}
+                                          onImageClick={(url) => {
+                                            // find index in allConversationImages
+                                            const found = allConversationImages.findIndex(
+                                              (li) => li.url === rawKey || li.url === url,
+                                            );
+                                            setLightboxIndex(found >= 0 ? found : 0);
+                                            setLightboxOpen(true);
+                                          }}
+                                        />
+                                      );
+                                    })}
                                   </div>
                                 )}
                                 {/* Non-image files */}
@@ -3092,40 +3639,28 @@ export default function ChatDetailClient() {
                       {/* ── Reaction badges below bubble ── */}
                       {hasReactions && (
                         <div
-                          className={`flex flex-wrap gap-1 ${
+                          className={`flex ${
                             isMe
-                              ? "justify-end pr-10"
-                              : "justify-start pl-10"
+                              ? "justify-end pr-8"
+                              : "justify-start pl-8"
                           } -mt-1 mb-0.5`}
                         >
-                          {Object.entries(reactionSummary).map(([emoji, data]) => {
-                            const isMine = data.users.includes(currentUserId || "");
-                            return (
-                              <button
-                                key={emoji}
-                                type="button"
-                                title={`${data.count}`}
-                                onClick={() => {
-                                  if (!messageId) return;
-                                  reactToMessage({ conversationId, messageId, emoji });
-                                }}
-                                className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs font-medium transition-all duration-150 hover:scale-110 shadow-sm border ${
-                                  isMine
-                                    ? "bg-blue-100 border-blue-300 text-blue-700"
-                                    : "bg-white border-slate-200 text-slate-600"
-                                }`}
-                              >
-                                <span className="text-sm leading-none">
-                                  {EMOTE_MAP[emoji] || emoji}
-                                </span>
-                                {data.count > 1 && (
-                                  <span>{data.count}</span>
-                                )}
-                              </button>
-                            );
-                          })}
+                          <CombinedReactionBadge
+                            isMe={isMe}
+                            entries={Object.entries(reactionSummary).map(([emoji, data]) => ({
+                              emoji,
+                              count: data.count,
+                              isMine: data.users.includes(currentUserId || ""),
+                              reactors: data.reactors,
+                            }))}
+                            onToggle={(emoji) => {
+                              if (!messageId) return;
+                              reactToMessage({ conversationId, messageId, emoji });
+                            }}
+                          />
                         </div>
                       )}
+
 
                     </Fragment>
                   );
@@ -3373,6 +3908,15 @@ export default function ChatDetailClient() {
         onTyping={handleTyping}
         onStopTyping={handleStopTyping}
       />
+
+      {/* ── Image Lightbox ── */}
+      {lightboxOpen && allConversationImages.length > 0 && (
+        <ImageLightbox
+          images={allConversationImages}
+          initialIndex={lightboxIndex}
+          onClose={() => setLightboxOpen(false)}
+        />
+      )}
     </div>
   );
 }
