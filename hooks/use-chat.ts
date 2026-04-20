@@ -12,6 +12,7 @@ import {
   UpdateGroupConversationPayload,
   PinnedMessagesResponse,
   ShareTargetsResponse,
+  ClearConversationHistoryResponse,
 } from "@/api/chat";
 import { MessageAttachment } from "@/types/message";
 import { userService } from "@/api/user";
@@ -800,6 +801,59 @@ export const useUpdateGroupConversation = () => {
     onError: (error: any) => {
       toast.error(
         error?.response?.data?.message || "Không thể cập nhật thông tin nhóm",
+      );
+    },
+  });
+};
+
+export const useClearConversationHistory = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ conversationId }: { conversationId: string }) =>
+      chatService.clearConversationHistory(conversationId),
+    onMutate: async ({ conversationId }) => {
+      await queryClient.cancelQueries({
+        queryKey: ["messages", conversationId],
+      });
+
+      const previousMessages = queryClient.getQueryData<MessagesResponse>([
+        "messages",
+        conversationId,
+      ]);
+
+      queryClient.setQueryData<MessagesResponse>(
+        ["messages", conversationId],
+        (old) => ({
+          ...(old || {}),
+          messages: [],
+          total: 0,
+          hasMore: false,
+          nextCursor: null,
+          pagination: {
+            ...(old?.pagination || {}),
+            hasMore: false,
+            nextCursor: null,
+          },
+        }),
+      );
+
+      return { previousMessages, conversationId };
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["conversation", variables.conversationId] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      toast.success("Đã xóa lịch sử hội thoại");
+    },
+    onError: (error: any, variables, context) => {
+      if (context?.previousMessages) {
+        queryClient.setQueryData(
+          ["messages", variables.conversationId],
+          context.previousMessages,
+        );
+      }
+      toast.error(
+        error?.response?.data?.message || "Không thể xóa lịch sử hội thoại",
       );
     },
   });
