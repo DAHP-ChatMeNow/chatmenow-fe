@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { reelService } from "@/api/reel";
+import { reelService } from "@/services/reel";
 import { ReelCard } from "./reel-card";
 import { Loader2, RefreshCw } from "lucide-react";
 

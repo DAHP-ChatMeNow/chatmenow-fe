@@ -2,7 +2,7 @@ import api from "@/lib/axios";
 import { Post, PostPrivacy } from "@/types/post";
 import { Comment } from "@/types/comment";
 import { User } from "@/types/user";
-import { userService } from "@/api/user";
+import { userService } from "@/services/user";
 
 export type CreatePostPayload = {
   content: string;

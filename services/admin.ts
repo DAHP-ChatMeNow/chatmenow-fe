@@ -1,6 +1,6 @@
 import api from "@/lib/axios";
 import { AccountStatus } from "@/types/user";
-import { userService, UpdateAccountStatusPayload } from "@/api/user";
+import { userService, UpdateAccountStatusPayload } from "@/services/user";
 
 // ===================== Users =====================
 export interface AdminUser {

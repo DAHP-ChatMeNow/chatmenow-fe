@@ -54,7 +54,7 @@ import {
 } from "@/components/post/ai-post-chat-popup";
 import { StoryPrivacyDialog } from "@/components/post/story-privacy-dialog";
 import { StoryPrivacy } from "@/types/story";
-import { AiSuggestion } from "@/api/post";
+import { AiSuggestion } from "@/services/post";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useContacts } from "@/hooks/use-contact";
 import {

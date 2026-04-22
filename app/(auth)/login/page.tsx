@@ -10,7 +10,7 @@ import {
   useRevokeRememberedAccount,
   useSendAccountUnlockOtp,
 } from "@/hooks/use-auth";
-import { authService } from "@/api/auth";
+import { authService } from "@/services/auth";
 import { useAuthStore } from "@/store/use-auth-store";
 import { isAxiosError } from "axios";
 import { zodResolver } from "@hookform/resolvers/zod";

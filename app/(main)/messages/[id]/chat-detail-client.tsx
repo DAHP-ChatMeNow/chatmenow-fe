@@ -67,8 +67,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SharedPostPreview } from "@/components/post/shared-post-preview";
 import { useQueryClient } from "@tanstack/react-query";
-import { chatService, MessagesResponse } from "@/api/chat";
-import { postService } from "@/api/post";
+import { chatService, MessagesResponse } from "@/services/chat";
+import { postService } from "@/services/post";
 import { usePresignedUrl } from "@/hooks/use-profile";
 import { toast } from "sonner";
 import {

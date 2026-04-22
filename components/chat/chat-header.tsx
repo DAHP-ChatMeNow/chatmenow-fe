@@ -101,7 +101,7 @@ import { isShareCardSource } from "@/lib/share-card";
 import { User } from "@/types/user";
 import { UnreadSummaryDialog } from "@/components/chat/unread-summary-dialog";
 import { usePresignedUrl } from "@/hooks/use-profile";
-import { chatService, type PinnedMessageItem } from "@/api/chat";
+import { chatService, type PinnedMessageItem } from "@/services/chat";
 import { toast } from "sonner";
 import { QRCodeCanvas } from "qrcode.react";
 import { buildPublicAppUrl } from "@/types/utils";

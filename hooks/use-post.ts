@@ -15,7 +15,7 @@ import {
   UpdatePostPrivacyPayload,
   SharePostPayload,
   SharePostToChatPayload,
-} from "@/api/post";
+} from "@/services/post";
 import { isPremium403Error } from "@/lib/premium";
 import { Post } from "@/types/post";
 import { Comment } from "@/types/comment";

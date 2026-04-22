@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useShareTargets } from "@/hooks/use-chat";
 import { useSharePost, useSharePostToChat } from "@/hooks/use-post";
 import { PresignedAvatar } from "@/components/ui/presigned-avatar";
-import { ShareTargetItem, ShareTargetMember } from "@/api/chat";
+import { ShareTargetItem, ShareTargetMember } from "@/services/chat";
 import { PostPrivacy } from "@/types/post";
 
 const getMemberId = (member?: ShareTargetMember): string | undefined => {

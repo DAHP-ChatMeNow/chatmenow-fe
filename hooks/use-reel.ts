@@ -6,7 +6,7 @@ import {
     useQuery,
     useQueryClient,
 } from "@tanstack/react-query";
-import { reelService } from "@/api/reel";
+import { reelService } from "@/services/reel";
 
 // ─── Feed ────────────────────────────────────────────────────────────────────
 

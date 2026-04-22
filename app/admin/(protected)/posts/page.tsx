@@ -8,7 +8,7 @@ import {
   AdminPostPrivacy,
   AdminPostSortBy,
   AdminPostSortOrder,
-} from "@/api/admin";
+} from "@/services/admin";
 import { toast } from "sonner";
 import {
   Trash2,

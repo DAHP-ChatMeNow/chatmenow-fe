@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { chatService } from "@/api/chat";
+import { chatService } from "@/services/chat";
 import { Poll } from "@/types/message";
 
 // ─── Create Poll ───────────────────────────────────────────────────────────────

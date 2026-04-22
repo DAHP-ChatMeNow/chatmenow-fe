@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { chatService, UpdateAiAdminConfigPayload } from "@/api/chat";
+import { chatService, UpdateAiAdminConfigPayload } from "@/services/chat";
 import { toast } from "sonner";
 import {
   Bot,

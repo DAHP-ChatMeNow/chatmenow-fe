@@ -2,7 +2,7 @@
 import { useState, useRef } from "react";
 import { X, Upload, Clapperboard, Music2, Loader2, ChevronRight } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { reelService } from "@/api/reel";
+import { reelService } from "@/services/reel";
 import { MusicTrack } from "@/types/music";
 import { MusicPickerModal } from "@/components/music/music-picker-modal";
 import { toast } from "sonner";

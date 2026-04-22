@@ -41,7 +41,7 @@ import {
   useSendAccountLockOtp,
   useVerifyAccountLockOtp,
 } from "@/hooks/use-auth";
-import { userService } from "@/api/user";
+import { userService } from "@/services/user";
 import { useActivityHistory } from "@/hooks/use-user";
 import { isAxiosError } from "axios";
 import { toast } from "sonner";

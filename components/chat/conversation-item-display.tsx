@@ -6,7 +6,7 @@ import { Conversation } from "@/types/conversation";
 import { formatMessageTime } from "@/lib/utils";
 import { useMarkConversationAsRead } from "@/hooks/use-chat";
 import { useQueryClient } from "@tanstack/react-query";
-import { ConversationsResponse } from "@/api/chat";
+import { ConversationsResponse } from "@/services/chat";
 
 type ChatMemberUser =
   | string

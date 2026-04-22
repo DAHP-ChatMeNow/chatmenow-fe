@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { chatService } from "@/api/chat";
+import { chatService } from "@/services/chat";
 import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 import { Send, CheckCircle2, Search, Link as LinkIcon, Share as ShareIcon } from "lucide-react";
 import { toast } from "sonner";

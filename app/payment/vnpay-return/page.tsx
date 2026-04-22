@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { premiumService } from "@/api/premium";
+import { premiumService } from "@/services/premium";
 import { PremiumTransaction } from "@/types/premium";
 import { BASE_API_URL } from "@/types/utils";
 

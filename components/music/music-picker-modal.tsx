@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { Search, X, Music2, Play, Pause, Check, Loader2 } from "lucide-react";
-import { musicService } from "@/api/music";
+import { musicService } from "@/services/music";
 import { MusicTrack } from "@/types/music";
 
 interface MusicPickerModalProps {

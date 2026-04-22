@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { premiumService } from "@/api/premium";
+import { premiumService } from "@/services/premium";
 import { VnpayCheckoutPayload } from "@/types/premium";
 
 const PREMIUM_ALREADY_ACTIVE_MESSAGE =

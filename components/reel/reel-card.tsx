@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Reel } from "@/types/reel";
-import { reelService } from "@/api/reel";
+import { reelService } from "@/services/reel";
 import { MusicPlayerInline } from "@/components/music/music-player-inline";
 import { ReelCommentDrawer } from "@/components/reel/reel-comment-drawer";
 import { PresignedAvatar } from "@/components/ui/presigned-avatar";

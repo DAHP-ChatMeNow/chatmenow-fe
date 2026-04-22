@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { userService, UpdateProfilePayload } from "@/api/user";
+import { userService, UpdateProfilePayload } from "@/services/user";
 import { useAuthStore } from "@/store/use-auth-store";
 import { validateImageFile } from "@/lib/cloudinary";
 

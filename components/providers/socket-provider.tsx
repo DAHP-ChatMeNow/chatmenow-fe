@@ -17,10 +17,10 @@ import { Notification } from "@/types/notification";
 import {
   normalizeNotification,
   NotificationsResponse,
-} from "@/api/notification";
+} from "@/services/notification";
 import { Message } from "@/types/message";
-import { ConversationsResponse, MessagesResponse } from "@/api/chat";
-import { ContactsResponse } from "@/api/contact";
+import { ConversationsResponse, MessagesResponse } from "@/services/chat";
+import { ContactsResponse } from "@/services/contact";
 import { User } from "@/types/user";
 import { formatPresenceStatus } from "@/lib/utils";
 

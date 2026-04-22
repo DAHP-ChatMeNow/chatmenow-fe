@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { notificationService, NotificationsResponse } from "@/api/notification";
+import { notificationService, NotificationsResponse } from "@/services/notification";
 
 export const useNotifications = () => {
   return useQuery({

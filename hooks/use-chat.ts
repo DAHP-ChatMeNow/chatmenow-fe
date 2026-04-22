@@ -13,9 +13,9 @@ import {
   PinnedMessagesResponse,
   ShareTargetsResponse,
   ClearConversationHistoryResponse,
-} from "@/api/chat";
+} from "@/services/chat";
 import { MessageAttachment } from "@/types/message";
-import { userService } from "@/api/user";
+import { userService } from "@/services/user";
 import { Message } from "@/types/message";
 import { Conversation } from "@/types/conversation";
 import { useAuthStore } from "@/store/use-auth-store";

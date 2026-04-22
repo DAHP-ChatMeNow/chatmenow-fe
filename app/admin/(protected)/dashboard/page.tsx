@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { adminService } from "@/api/admin";
+import { adminService } from "@/services/admin";
 import {
   TrendingUp,
   Eye,

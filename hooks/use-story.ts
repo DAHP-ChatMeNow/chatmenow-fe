@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CreateStoryPayload, storyService } from "@/api/story";
+import { CreateStoryPayload, storyService } from "@/services/story";
 
 export const useStoryFeed = () => {
   return useQuery({

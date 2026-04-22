@@ -2,8 +2,8 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { contactService, ContactsResponse } from "@/api/contact";
-import { userService } from "@/api/user";
+import { contactService, ContactsResponse } from "@/services/contact";
+import { userService } from "@/services/user";
 import { User } from "@/types/user";
 import { FriendRequest } from "@/types/friend-request";
 import { useAuthStore } from "@/store/use-auth-store";

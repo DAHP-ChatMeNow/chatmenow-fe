@@ -18,7 +18,7 @@ import {
   VerifyOtpPayload,
   OtpResponse,
   AuthResponse,
-} from "@/api/auth";
+} from "@/services/auth";
 import {
   RememberedLoginPayload,
   RevokeRememberedAccountPayload,
@@ -26,7 +26,7 @@ import {
 import { useAuthStore } from "@/store/use-auth-store";
 import { useEffect } from "react";
 import { getDefaultRouteForClient } from "@/lib/default-route";
-import { userService } from "@/api/user";
+import { userService } from "@/services/user";
 
 const getErrorMessage = (error: unknown) => {
   if (isAxiosError(error)) {

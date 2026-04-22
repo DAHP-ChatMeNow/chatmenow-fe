@@ -18,7 +18,7 @@ import {
   type UnreadSummaryHistoryItem,
   type UnreadSummaryMessagesResponse,
   type UnreadSummaryResult,
-} from "@/api/chat";
+} from "@/services/chat";
 import { toast } from "sonner";
 
 type ChatBackgroundKey = "default" | "sky" | "sunset" | "mint" | "night";

@@ -44,7 +44,7 @@ import { MessageAttachment } from "@/types/message";
 import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 import { SharedPostPreview } from "@/components/post/shared-post-preview";
 import { useQueryClient } from "@tanstack/react-query";
-import { chatService, MessagesResponse } from "@/api/chat";
+import { chatService, MessagesResponse } from "@/services/chat";
 import { usePresignedUrl } from "@/hooks/use-profile";
 import { toast } from "sonner";
 

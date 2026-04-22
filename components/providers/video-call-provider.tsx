@@ -29,7 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useSocket } from "@/components/providers/socket-provider";
-import { userService } from "@/api/user";
+import { userService } from "@/services/user";
 import { useAuthStore } from "@/store/use-auth-store";
 import { BASE_API_URL } from "@/types/utils";
 import {

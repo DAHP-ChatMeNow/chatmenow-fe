@@ -74,7 +74,7 @@ import {
 import { BlogSkeleton } from "@/components/skeletons/blog-skeleton";
 import { useLanguage } from "@/contexts/language-context";
 import { Post, PostMedia, PostPrivacy } from "@/types/post";
-import { AiSuggestion } from "@/api/post";
+import { AiSuggestion } from "@/services/post";
 import { formatPresenceStatus, formatPostTime } from "@/lib/utils";
 import { PostMediaLightbox } from "@/components/post/post-media-lightbox";
 import { PostShareDialog } from "@/components/post/post-share-dialog";

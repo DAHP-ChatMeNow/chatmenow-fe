@@ -8,7 +8,7 @@ import {
   AdminUserRoleFilter,
   AdminUserStatusFilter,
   AdminUserSortBy,
-} from "@/api/admin";
+} from "@/services/admin";
 import { toast } from "sonner";
 import {
   Search,
@@ -56,7 +56,7 @@ import {
 } from "@/components/ui/dialog";
 import { PresignedAvatar } from "@/components/ui/presigned-avatar";
 import { AccountStatus } from "@/types/user";
-import { UpdateAccountStatusPayload } from "@/api/user";
+import { UpdateAccountStatusPayload } from "@/services/user";
 import { FriendsDialog } from "./friends-dialog";
 
 const LIMIT_OPTIONS = [20];
