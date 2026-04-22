@@ -1,9 +1,18 @@
 export type AccountStatus = "active" | "suspended" | "locked";
 
+export interface UserAccountRef {
+  _id?: string;
+  id?: string;
+  email?: string;
+  role?: string;
+  isPremium?: boolean;
+  premiumExpiryDate?: string | Date | null;
+}
+
 export interface User {
   id: string;
   _id?: string;
-  accountId: string;
+  accountId: string | UserAccountRef;
   email?: string;
   displayName: string;
   bio?: string;
@@ -28,5 +37,8 @@ export interface User {
   accountStatus?: AccountStatus;
   suspendedUntil?: string | Date;
   statusReason?: string;
+  isPremium?: boolean;
+  premiumTierName?: string;
+  premiumExpiryDate?: string | Date;
   createdAt: Date;
 }

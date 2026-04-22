@@ -20,6 +20,7 @@ import {
   MapPin,
   ImagePlus,
   Palette,
+  Crown,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PresignedAvatar } from "@/components/ui/presigned-avatar";
@@ -499,6 +500,13 @@ export default function ProfilePage() {
     selectedCoverPreset?.className || DEFAULT_PROFILE_COVER_CLASS;
   const showCoverImage = !selectedCoverPreset && !!resolvedCoverImage;
   const isCoverBusy = isUploadingCover || isDeletingCover;
+  const premiumExpiryTime = user?.premiumExpiryDate
+    ? new Date(user.premiumExpiryDate).getTime()
+    : null;
+  const isPremiumActive = Boolean(
+    user?.isPremium &&
+      (premiumExpiryTime === null || premiumExpiryTime > Date.now()),
+  );
 
   if (!user) return null;
 
@@ -679,9 +687,17 @@ export default function ProfilePage() {
               </div>
 
               {/* Name + bio */}
-              <h2 className="text-xl font-bold leading-tight md:text-2xl text-slate-900 dark:text-white">
-                {user.displayName || "User"}
-              </h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl font-bold leading-tight md:text-2xl text-slate-900 dark:text-white">
+                  {user.displayName || "User"}
+                </h2>
+                {isPremiumActive ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold text-amber-700 bg-amber-100 rounded-full">
+                    <Crown className="w-3.5 h-3.5" />
+                    Premium
+                  </span>
+                ) : null}
+              </div>
               {user.bio && (
                 <p className="max-w-lg mt-1 text-sm text-slate-500 dark:text-slate-400">
                   {user.bio}

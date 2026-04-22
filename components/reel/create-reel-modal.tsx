@@ -5,6 +5,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { reelService } from "@/api/reel";
 import { MusicTrack } from "@/types/music";
 import { MusicPickerModal } from "@/components/music/music-picker-modal";
+import { toast } from "sonner";
+import {
+    PREMIUM_ERROR_CODE,
+    extractPremiumErrorInfo,
+    isPremium403Error,
+} from "@/lib/premium";
 
 interface CreateReelModalProps {
     open: boolean;
@@ -23,7 +29,51 @@ export function CreateReelModal({ open, onClose }: CreateReelModalProps) {
     const [selectedTrack, setSelectedTrack] = useState<MusicTrack | null>(null);
     const [musicPickerOpen, setMusicPickerOpen] = useState(false);
     const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+    const [videoDuration, setVideoDuration] = useState<number | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const getVideoDuration = (file: File): Promise<number> =>
+        new Promise((resolve) => {
+            const video = document.createElement("video");
+            const url = URL.createObjectURL(file);
+            video.preload = "metadata";
+            video.src = url;
+            video.onloadedmetadata = () => {
+                URL.revokeObjectURL(url);
+                resolve(Math.ceil(video.duration || 0));
+            };
+            video.onerror = () => {
+                URL.revokeObjectURL(url);
+                resolve(0);
+            };
+        });
+
+    const getErrorMessage = (error: unknown) => {
+        if (typeof error !== "object" || !error) return "Đăng reel thất bại";
+        const err = error as {
+            response?: { data?: { message?: string } };
+            message?: string;
+        };
+        return err.response?.data?.message || err.message || "Đăng reel thất bại";
+    };
+
+    const handleSelectedFile = async (file: File) => {
+        if (!file.type.startsWith("video/")) {
+            toast.error("Chỉ chấp nhận file video");
+            return;
+        }
+        if (file.size > 200 * 1024 * 1024) {
+            toast.error("Video tối đa 200MB");
+            return;
+        }
+
+        const duration = await getVideoDuration(file);
+        setVideoFile(file);
+        setVideoDuration(duration);
+        if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+        setVideoPreviewUrl(URL.createObjectURL(file));
+        setStep("compose");
+    };
 
     const { mutate: create, isPending } = useMutation({
         mutationFn: async () => {
@@ -60,6 +110,7 @@ export function CreateReelModal({ open, onClose }: CreateReelModalProps) {
             // 3. Create reel with S3 key
             return reelService.createReel({
                 videoKey: presigned.key,
+                videoDuration: videoDuration || (await getVideoDuration(videoFile)),
                 caption: caption.trim() || undefined,
                 musicUrl: selectedTrack?.url || null,
                 musicTitle: selectedTrack?.title || null,
@@ -71,9 +122,20 @@ export function CreateReelModal({ open, onClose }: CreateReelModalProps) {
             qc.invalidateQueries({ queryKey: ["my-reels"] });
             handleClose();
         },
-        onError: (err: any) => {
+        onError: (err: unknown) => {
             setUploadProgress(null);
-            alert(err?.message || "Đăng reel thất bại");
+            if (isPremium403Error(err)) {
+                const info = extractPremiumErrorInfo(err);
+                if (
+                    info.code === PREMIUM_ERROR_CODE.VIDEO_DURATION_EXCEEDED ||
+                    /duration/i.test(String(info.message || ""))
+                ) {
+                    toast.error("Video vượt giới hạn gói hiện tại");
+                }
+                return;
+            }
+
+            toast.error(getErrorMessage(err));
         },
     });
 
@@ -86,32 +148,21 @@ export function CreateReelModal({ open, onClose }: CreateReelModalProps) {
         setCaption("");
         setSelectedTrack(null);
         setUploadProgress(null);
+        setVideoDuration(null);
         onClose();
     };
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        if (!file.type.startsWith("video/")) {
-            alert("Chỉ chấp nhận file video");
-            return;
-        }
-        if (file.size > 200 * 1024 * 1024) {
-            alert("Video tối đa 200MB");
-            return;
-        }
-        setVideoFile(file);
-        if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
-        setVideoPreviewUrl(URL.createObjectURL(file));
-        setStep("compose");
+        await handleSelectedFile(file);
     };
 
     const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         const file = e.dataTransfer.files?.[0];
         if (file) {
-            const fakeEvent = { target: { files: [file] } } as any;
-            handleFileChange(fakeEvent);
+            void handleSelectedFile(file);
         }
     };
 

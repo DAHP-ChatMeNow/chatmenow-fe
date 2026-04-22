@@ -46,6 +46,31 @@ const getCookieValue = (name: string) => {
   return null;
 };
 
+const normalizeAuthUser = (user: User): User => {
+  const accountRef =
+    user?.accountId && typeof user.accountId === "object" ? user.accountId : undefined;
+
+  const derivedPremium =
+    typeof user?.isPremium === "boolean"
+      ? user.isPremium
+      : typeof accountRef?.isPremium === "boolean"
+        ? accountRef.isPremium
+        : undefined;
+
+  const derivedExpiry =
+    user?.premiumExpiryDate ??
+    (accountRef?.premiumExpiryDate == null
+      ? undefined
+      : accountRef.premiumExpiryDate);
+
+  return {
+    ...user,
+    id: user.id || user._id || "",
+    isPremium: derivedPremium,
+    premiumExpiryDate: derivedExpiry,
+  };
+};
+
 // Helper to set auth cookie
 const setAuthCookie = (token: string) => {
   document.cookie = `auth-token=${encodeURIComponent(token)}; path=/; max-age=${AUTH_COOKIE_MAX_AGE}; SameSite=Lax`;
@@ -178,8 +203,9 @@ export const useAuthStore = create<AuthState>()(
       rememberToken: null,
       rememberedAccounts: [],
       setAuth: (user, token, role, rememberToken) => {
+        const normalizedUser = normalizeAuthUser(user);
         set({
-          user,
+          user: normalizedUser,
           token,
           role: role ?? null,
           rememberToken: rememberToken ?? null,

@@ -4,9 +4,10 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { FloatingNotificationButton } from "@/components/layout/floating-notification-button";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useUserProfile } from "@/hooks/use-user";
+import { useMe } from "@/hooks/use-auth";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Search, Menu } from "lucide-react";
+import { Search, Menu, Crown } from "lucide-react";
 import { Archivo_Black } from "next/font/google";
 
 const mobileBrandFont = Archivo_Black({
@@ -20,15 +21,18 @@ export default function MainLayout({
   children: React.ReactNode;
 }) {
   const token = useAuthStore((state) => state.token);
+  const user = useAuthStore((state) => state.user);
   const router = useRouter();
   const pathname = usePathname();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   const hideFloatingNotification =
     pathname === "/notifications" || pathname.startsWith("/messages");
+  const isPremiumActive = Boolean(user?.isPremium);
 
   // Auto-sync user profile từ server (chạy mỗi 30s và khi focus window)
   useUserProfile();
+  useMe();
 
   useEffect(() => {
     // Client-side route protection fallback
@@ -84,11 +88,19 @@ export default function MainLayout({
               </div>
             ) : (
               <>
-                <h1
-                  className={`${mobileBrandFont.className} text-[34px] leading-none tracking-[-0.03em] text-blue-600`}
-                >
-                  Chatmenow
-                </h1>
+                <div className="flex items-center gap-2">
+                  <h1
+                    className={`${mobileBrandFont.className} text-[34px] leading-none tracking-[-0.03em] text-blue-600`}
+                  >
+                    Chatmenow
+                  </h1>
+                  {isPremiumActive ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-amber-700 bg-amber-100 rounded-full">
+                      <Crown className="w-3 h-3" />
+                      Premium
+                    </span>
+                  ) : null}
+                </div>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"

@@ -78,8 +78,9 @@ export type AuthResponse = {
 };
 
 export type GetMeResponse = {
-  success: boolean;
-  user: User;
+  success?: boolean;
+  user?: User;
+  data?: User | { user?: User };
 };
 
 export type RememberedLoginResponse = AuthResponse;
@@ -139,7 +140,44 @@ const register = async (payload: RegisterPayload) => {
 
 const getMe = async () => {
   const { data } = await api.get<GetMeResponse>("/auth/me");
-  return data.user;
+  const rawAsUser =
+    data &&
+    typeof data === "object" &&
+    ("_id" in data || "id" in data || "displayName" in data)
+      ? (data as unknown as User)
+      : undefined;
+
+  const candidate =
+    data?.user ||
+    (data?.data && "user" in data.data
+      ? data.data.user
+      : (data?.data as User | undefined)) ||
+    rawAsUser;
+
+  if (!candidate) {
+    throw new Error("Không tìm thấy thông tin người dùng từ /auth/me");
+  }
+
+  const accountRef =
+    candidate.accountId && typeof candidate.accountId === "object"
+      ? candidate.accountId
+      : undefined;
+
+  return {
+    ...candidate,
+    id: candidate.id || candidate._id || "",
+    isPremium:
+      typeof candidate.isPremium === "boolean"
+        ? candidate.isPremium
+        : typeof accountRef?.isPremium === "boolean"
+          ? accountRef.isPremium
+          : undefined,
+    premiumExpiryDate:
+      candidate.premiumExpiryDate ??
+      (accountRef?.premiumExpiryDate == null
+        ? undefined
+        : accountRef.premiumExpiryDate),
+  } satisfies User;
 };
 
 const sendAccountLockOtp = async () => {

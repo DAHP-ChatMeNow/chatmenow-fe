@@ -16,6 +16,7 @@ import {
   SharePostPayload,
   SharePostToChatPayload,
 } from "@/api/post";
+import { isPremium403Error } from "@/lib/premium";
 import { Post } from "@/types/post";
 import { Comment } from "@/types/comment";
 
@@ -374,6 +375,7 @@ export const usePostAiChat = () => {
       queryClient.invalidateQueries({ queryKey: ["ai-conversation"] });
     },
     onError: (error: any) => {
+      if (isPremium403Error(error)) return;
       toast.error(
         error?.response?.data?.message || "Không thể gửi câu hỏi tới AI chat",
       );

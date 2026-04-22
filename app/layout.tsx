@@ -6,6 +6,7 @@ import { QueryProvider } from "@/components/providers/query-provider";
 import { SocketProvider } from "@/components/providers/socket-provider";
 import { VideoCallProvider } from "@/components/providers/video-call-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { PremiumUpsellDialog } from "@/components/premium/premium-upsell-dialog";
 import { LanguageProvider } from "@/contexts/language-context";
 
 const montserrat = Montserrat({
@@ -54,6 +55,7 @@ export default function RootLayout({
                 <VideoCallProvider>
                   <div className="w-full min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
                     {children}
+                    <PremiumUpsellDialog />
                     <Toaster position="top-right" richColors />
                   </div>
                 </VideoCallProvider>

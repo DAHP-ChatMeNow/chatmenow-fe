@@ -19,6 +19,7 @@ import {
   Clock,
   MessageCircle,
   PlaySquare,
+  Crown,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -476,6 +477,18 @@ export default function SettingsPage() {
 
           {/* Preferences */}
           <Section label="Tuỳ chọn">
+            <SettingItem
+              icon={Crown}
+              iconBg="bg-amber-50 dark:bg-amber-900/20"
+              iconColor="text-amber-500"
+              label="Premium của tôi"
+              description={
+                user?.premiumExpiryDate
+                  ? `Hiệu lực tới ${new Date(user.premiumExpiryDate).toLocaleDateString("vi-VN")}`
+                  : "Xem gói Premium, thanh toán mẫu và lịch sử giao dịch"
+              }
+              onClick={() => router.push("/settings/premium")}
+            />
             <SettingItem
               icon={Bell}
               iconBg="bg-yellow-50 dark:bg-yellow-900/20"

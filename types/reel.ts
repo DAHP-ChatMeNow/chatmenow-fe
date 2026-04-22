@@ -46,6 +46,7 @@ export interface ReelCommentsResult {
 
 export interface CreateReelPayload {
     videoKey: string;
+    videoDuration: number;
     caption?: string;
     musicUrl?: string | null;
     musicTitle?: string | null;

@@ -1,5 +1,6 @@
 import { useAuthStore } from "@/store/use-auth-store";
 import { BASE_API_URL } from "@/types/utils";
+import { getPremiumPopupMessage, resolvePremiumErrorCode } from "@/lib/premium";
 import axios from "axios";
 import { toast } from "sonner";
 
@@ -98,6 +99,18 @@ api.interceptors.response.use(
         const isAdminPath = window.location.pathname.startsWith("/admin");
         window.location.replace(isAdminPath ? "/admin/login" : "/login");
       }
+    }
+
+    const premiumCode = resolvePremiumErrorCode(error);
+    if (premiumCode && typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("premium-error", {
+          detail: {
+            code: premiumCode,
+            message: getPremiumPopupMessage(premiumCode),
+          },
+        }),
+      );
     }
 
     return Promise.reject(error);
