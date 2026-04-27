@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:quiet": "next dev 2>&1 | grep -vE \"Compiled /payment/vnpay-return|GET /payment/vnpay-return\"",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

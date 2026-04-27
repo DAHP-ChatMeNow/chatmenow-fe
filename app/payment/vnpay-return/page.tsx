@@ -322,7 +322,7 @@ export default function VnpayReturnPage() {
             href="/settings/premium"
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
           >
-            Về My Premium
+            Về Premium của tôi
           </Link>
         </div>
       </div>

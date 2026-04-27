@@ -3,20 +3,15 @@
 import { useAuthStore } from "@/store/use-auth-store";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
-import { Users, Newspaper, Bot, LogOut, ShieldCheck, Home, BarChart3 } from "lucide-react";
+import { Users, Newspaper, Bot, LogOut, ShieldCheck, BarChart3, Crown } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  {
-    icon: Home,
-    label: "Bảng điều khiển",
-    path: "/admin",
-    exactMatch: true,
-  },
   { icon: BarChart3, label: "Thống kê", path: "/admin/dashboard", exactMatch: true },
   { icon: Users, label: "Người dùng", path: "/admin/users" },
   { icon: Newspaper, label: "Bài viết", path: "/admin/posts" },
+  { icon: Crown, label: "Premium", path: "/admin/premium" },
   { icon: Bot, label: "AI Chat", path: "/admin/ai" },
 ];
 
@@ -41,7 +36,7 @@ export default function AdminProtectedLayout({
   };
 
   return (
-    <div className="flex h-screen bg-slate-100 dark:bg-slate-900">
+    <div className="flex h-screen bg-white">
       {/* Sidebar */}
       <aside className="flex flex-col bg-white border-r w-60 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
         {/* Logo */}
@@ -89,7 +84,7 @@ export default function AdminProtectedLayout({
       </aside>
 
       {/* Main */}
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="flex-1 overflow-auto bg-white">{children}</main>
     </div>
   );
 }

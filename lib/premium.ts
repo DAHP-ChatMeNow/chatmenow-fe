@@ -9,6 +9,10 @@ export type PremiumErrorInfo = {
 
 export const PREMIUM_ERROR_CODE = {
   AI_REQUIRED: "PREMIUM_AI_REQUIRED",
+  POST_DISABLED: "PREMIUM_POST_DISABLED",
+  REEL_DISABLED: "PREMIUM_REEL_DISABLED",
+  STORY_DISABLED: "PREMIUM_STORY_DISABLED",
+  INTERACTION_DISABLED: "PREMIUM_INTERACTION_DISABLED",
   LIMIT_EXCEEDED: "PREMIUM_LIMIT_EXCEEDED",
   VIDEO_DURATION_EXCEEDED: "PREMIUM_VIDEO_DURATION_EXCEEDED",
 } as const;
@@ -39,10 +43,31 @@ export const resolvePremiumErrorCode = (
   error: unknown,
 ): PremiumErrorCode | undefined => {
   const info = extractPremiumErrorInfo(error);
-  if (info.status !== 403) return undefined;
+  const status = Number(info.status || 0);
+  const hasPremiumLikeCode = String(info.code || "")
+    .toUpperCase()
+    .startsWith("PREMIUM_");
+  const allowedStatus = status === 0 || status === 400 || status === 403;
+  if (!allowedStatus && !hasPremiumLikeCode) return undefined;
 
   if (info.code === PREMIUM_ERROR_CODE.AI_REQUIRED) {
     return PREMIUM_ERROR_CODE.AI_REQUIRED;
+  }
+
+  if (info.code === PREMIUM_ERROR_CODE.POST_DISABLED) {
+    return PREMIUM_ERROR_CODE.POST_DISABLED;
+  }
+
+  if (info.code === PREMIUM_ERROR_CODE.REEL_DISABLED) {
+    return PREMIUM_ERROR_CODE.REEL_DISABLED;
+  }
+
+  if (info.code === PREMIUM_ERROR_CODE.STORY_DISABLED) {
+    return PREMIUM_ERROR_CODE.STORY_DISABLED;
+  }
+
+  if (info.code === PREMIUM_ERROR_CODE.INTERACTION_DISABLED) {
+    return PREMIUM_ERROR_CODE.INTERACTION_DISABLED;
   }
 
   if (info.code === PREMIUM_ERROR_CODE.LIMIT_EXCEEDED) {
@@ -68,6 +93,22 @@ export const isPremium403Error = (error: unknown): boolean => {
 export const getPremiumPopupMessage = (code?: PremiumErrorCode): string => {
   if (code === PREMIUM_ERROR_CODE.AI_REQUIRED) {
     return "Nâng cấp Premium để dùng AI";
+  }
+
+  if (code === PREMIUM_ERROR_CODE.POST_DISABLED) {
+    return "Gói hiện tại không cho phép đăng bài";
+  }
+
+  if (code === PREMIUM_ERROR_CODE.REEL_DISABLED) {
+    return "Gói hiện tại không cho phép đăng reel";
+  }
+
+  if (code === PREMIUM_ERROR_CODE.STORY_DISABLED) {
+    return "Gói hiện tại không cho phép đăng story";
+  }
+
+  if (code === PREMIUM_ERROR_CODE.INTERACTION_DISABLED) {
+    return "Gói hiện tại không cho phép tương tác";
   }
 
   if (code === PREMIUM_ERROR_CODE.LIMIT_EXCEEDED) {
