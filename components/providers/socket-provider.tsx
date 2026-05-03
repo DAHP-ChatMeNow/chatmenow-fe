@@ -236,6 +236,70 @@ const applyPresenceToUser = (
   };
 };
 
+const getConversationId = (conversation: any): string =>
+  String(
+    conversation?.id || conversation?._id || conversation?.conversationId || "",
+  ).trim();
+
+const normalizeConversationPayload = (conversation: any) => {
+  if (!conversation) return null;
+
+  const conversationId = getConversationId(conversation);
+  if (!conversationId) return null;
+
+  return {
+    ...conversation,
+    id: conversation.id || conversation._id || conversationId,
+    _id: conversation._id || conversationId,
+  };
+};
+
+const upsertConversationInList = (
+  oldData: ConversationsResponse | undefined,
+  conversation: any,
+) => {
+  const normalizedConversation = normalizeConversationPayload(conversation);
+  if (!normalizedConversation) return oldData;
+
+  const conversationId = getConversationId(normalizedConversation);
+  const existingConversations = oldData?.conversations || [];
+  const existingIndex = existingConversations.findIndex(
+    (item) => getConversationId(item) === conversationId,
+  );
+
+  if (existingIndex < 0) {
+    return {
+      ...(oldData || { conversations: [] }),
+      conversations: [normalizedConversation, ...existingConversations],
+    };
+  }
+
+  const nextConversations = [...existingConversations];
+  nextConversations[existingIndex] = {
+    ...nextConversations[existingIndex],
+    ...normalizedConversation,
+  };
+
+  return {
+    ...(oldData || { conversations: [] }),
+    conversations: nextConversations,
+  };
+};
+
+const removeConversationFromList = (
+  oldData: ConversationsResponse | undefined,
+  conversationId: string,
+) => {
+  if (!oldData?.conversations?.length) return oldData;
+
+  return {
+    ...oldData,
+    conversations: oldData.conversations.filter(
+      (item) => getConversationId(item) !== conversationId,
+    ),
+  };
+};
+
 export function SocketProvider({ children }: SocketProviderProps) {
   const socketRef = useRef<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -304,6 +368,46 @@ export function SocketProvider({ children }: SocketProviderProps) {
     socketInstance.on("friend_removed", () => {
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
     });
+
+    const handleConversationCreatedOrUpdated = (payload: any) => {
+      const conversation = payload?.conversation;
+      const conversationId = getConversationId(conversation || payload);
+      if (!conversationId) return;
+
+      if (conversation) {
+        queryClient.setQueryData<ConversationsResponse | undefined>(
+          ["conversations"],
+          (oldData) => upsertConversationInList(oldData, conversation),
+        );
+
+        queryClient.setQueryData(["conversation", conversationId], conversation);
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
+      queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
+      queryClient.invalidateQueries({ queryKey: ["pinned-messages", conversationId] });
+    };
+
+    const handleConversationDeleted = (payload: any) => {
+      const conversationId = getConversationId(payload?.conversation || payload);
+      if (!conversationId) return;
+
+      queryClient.setQueryData<ConversationsResponse | undefined>(
+        ["conversations"],
+        (oldData) => removeConversationFromList(oldData, conversationId),
+      );
+
+      queryClient.removeQueries({ queryKey: ["conversation", conversationId] });
+      queryClient.removeQueries({ queryKey: ["messages", conversationId] });
+      queryClient.removeQueries({ queryKey: ["pinned-messages", conversationId] });
+
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    };
+
+    socketInstance.on("conversation:created", handleConversationCreatedOrUpdated);
+    socketInstance.on("conversation:updated", handleConversationCreatedOrUpdated);
+    socketInstance.on("conversation:deleted", handleConversationDeleted);
     const handledRealtimeMessageIds = new Set<string>();
 
     const handleRealtimeMessage = (payload: RealtimeMessagePayload) => {
@@ -613,6 +717,9 @@ export function SocketProvider({ children }: SocketProviderProps) {
       socketInstance.off("friend_request_removed");
       socketInstance.off("friend_list_updated");
       socketInstance.off("friend_removed");
+      socketInstance.off("conversation:created", handleConversationCreatedOrUpdated);
+      socketInstance.off("conversation:updated", handleConversationCreatedOrUpdated);
+      socketInstance.off("conversation:deleted", handleConversationDeleted);
       socketInstance.off("message:new", handleRealtimeMessage);
       socketInstance.off("newMessage", handleRealtimeMessage);
       socketInstance.off("message:updated", handleRealtimeMessageUpdated);

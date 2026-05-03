@@ -172,8 +172,16 @@ export default function ChatDetailPage() {
       }
     };
 
-    const handleUserStopTyping = ({ userId }: { userId: string }) => {
-      setTypingUsers((prev) => prev.filter((name) => name !== userId));
+    const handleUserStopTyping = ({
+      userId,
+      displayName,
+    }: {
+      userId: string;
+      displayName?: string;
+    }) => {
+      setTypingUsers((prev) =>
+        prev.filter((name) => name !== displayName && name !== userId),
+      );
     };
 
     socket.current.on("userTyping", handleUserTyping);
@@ -212,7 +220,11 @@ export default function ChatDetailPage() {
 
   const handleStopTyping = () => {
     if (socket.current && conversationId) {
-      socket.current.emit("stopTyping", { conversationId, userId: user?.id });
+      socket.current.emit("stopTyping", {
+        conversationId,
+        userId: user?.id,
+        displayName: user?.displayName,
+      });
     }
   };
 
