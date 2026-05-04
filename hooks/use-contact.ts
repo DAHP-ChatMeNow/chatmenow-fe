@@ -114,10 +114,42 @@ export const useAcceptFriendRequest = () => {
 
   return useMutation({
     mutationFn: contactService.acceptFriendRequest,
-    onSuccess: () => {
+    onSuccess: (_data: any, requestId: string) => {
+      queryClient.setQueryData(["notifications"], (oldData: any) => {
+        if (!oldData?.notifications?.length) return oldData;
+
+        return {
+          ...oldData,
+          notifications: oldData.notifications.map((noti: any) => {
+            const referencedId =
+              typeof noti.referenced === "string"
+                ? noti.referenced
+                : noti.referenced?.id || noti.referenced?._id || "";
+
+            if (
+              noti.type === "friend_request" &&
+              referencedId &&
+              referencedId === requestId
+            ) {
+              return {
+                ...noti,
+                isRead: true,
+              };
+            }
+
+            return noti;
+          }),
+          unreadCount: Math.max(
+            0,
+            Number(oldData.unreadCount || 0) - 1,
+          ),
+        };
+      });
+
       queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
       toast.success("Đã chấp nhận lời mời kết bạn");
     },
     onError: (error: any) => {
@@ -133,9 +165,39 @@ export const useRejectFriendRequest = () => {
 
   return useMutation({
     mutationFn: contactService.rejectFriendRequest,
-    onSuccess: () => {
-      // ❌ Bỏ invalidateQueries vì socket sẽ tự động update
-      // queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+    onSuccess: (_data: any, requestId: string) => {
+      queryClient.setQueryData(["notifications"], (oldData: any) => {
+        if (!oldData?.notifications?.length) return oldData;
+
+        return {
+          ...oldData,
+          notifications: oldData.notifications.map((noti: any) => {
+            const referencedId =
+              typeof noti.referenced === "string"
+                ? noti.referenced
+                : noti.referenced?.id || noti.referenced?._id || "";
+
+            if (
+              noti.type === "friend_request" &&
+              referencedId &&
+              referencedId === requestId
+            ) {
+              return {
+                ...noti,
+                isRead: true,
+              };
+            }
+
+            return noti;
+          }),
+          unreadCount: Math.max(
+            0,
+            Number(oldData.unreadCount || 0) - 1,
+          ),
+        };
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
       toast.success("Đã từ chối lời mời kết bạn");
     },
     onError: (error: any) => {

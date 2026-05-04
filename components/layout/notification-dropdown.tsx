@@ -102,6 +102,7 @@ export function NotificationDropdown() {
   const notifications = notificationsData?.notifications || [];
   const unreadNotifications = notifications.filter((noti) => !noti.isRead);
   const unreadCount = unreadNotifications.length;
+  const hasUnreadNotifications = unreadCount > 0;
 
   // Show max 5 notifications in dropdown
   const recentNotifications = unreadNotifications.slice(0, 5);
@@ -182,7 +183,7 @@ export function NotificationDropdown() {
               size="sm"
               className="px-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950 h-7"
               onClick={() => markAllAsRead()}
-              disabled={isMarkingAll}
+              disabled={isMarkingAll || !hasUnreadNotifications}
             >
               Đánh dấu đã đọc
             </Button>
@@ -229,7 +230,7 @@ export function NotificationDropdown() {
                     <p className="mt-1 text-xs font-medium text-blue-600 dark:text-blue-400">
                       {formatTime(noti.createdAt)}
                     </p>
-                    {noti.type === "friend_request" && (
+                    {noti.type === "friend_request" && !noti.isRead && (
                       <div className="flex gap-2 mt-2">
                         <Button
                           size="sm"
