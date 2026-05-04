@@ -1,6 +1,14 @@
 import api from "@/lib/axios";
 import { AccountStatus } from "@/types/user";
 import { userService, UpdateAccountStatusPayload } from "@/services/user";
+import {
+  PremiumPlan,
+  PremiumPlanFeatures,
+  PremiumPlanLimits,
+} from "@/types/premium";
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 
 // ===================== Users =====================
 export interface AdminUser {
@@ -105,7 +113,7 @@ const updateUserAccountStatus = async (
 const getUserFriends = async (userId: string) => {
   const { data } = await api.get<{
     success: boolean;
-    friends: any[];
+    friends: unknown[];
     total: number;
   }>(`/users/${userId}/contacts`);
   return data;
@@ -410,6 +418,226 @@ const getPostStats = async (days: number = 30) => {
   } satisfies AdminPostsStatsResponse;
 };
 
+// ===================== Premium =====================
+export interface AdminPremiumPlanPayload {
+  code: string;
+  title?: string;
+  name: string;
+  description?: string;
+  price: number;
+  durationDays: number;
+  isRecommended?: boolean;
+  disable?: boolean;
+  benefits?: string[];
+  features?: PremiumPlanFeatures;
+  limits?: PremiumPlanLimits;
+}
+
+export interface AdminPremiumConfig {
+  currency?: string;
+  paymentTemplate?: unknown;
+  [key: string]: unknown;
+}
+
+const toBoolean = (value: unknown): boolean | undefined => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1") return true;
+    if (normalized === "false" || normalized === "0") return false;
+  }
+  return undefined;
+};
+
+const normalizeFeatureObject = (value: unknown): PremiumPlanFeatures => {
+  if (!value) return {};
+
+  if (Array.isArray(value)) {
+    return value.reduce<PremiumPlanFeatures>((acc, item) => {
+      if (typeof item === "string" && item.trim()) {
+        acc[item.trim()] = true;
+      }
+      return acc;
+    }, {});
+  }
+
+  if (typeof value !== "object") return {};
+
+  return Object.entries(value as Record<string, unknown>).reduce<
+    PremiumPlanFeatures
+  >((acc, [key, raw]) => {
+    const parsed = toBoolean(raw);
+    if (typeof parsed === "boolean") {
+      acc[key] = parsed;
+    }
+    return acc;
+  }, {});
+};
+
+const normalizeLimitObject = (value: unknown): PremiumPlanLimits => {
+  if (!value || typeof value !== "object") return {};
+
+  return Object.entries(value as Record<string, unknown>).reduce<
+    PremiumPlanLimits
+  >((acc, [key, raw]) => {
+    if (raw == null || raw === "") {
+      acc[key] = undefined;
+      return acc;
+    }
+    const parsed = Number(raw);
+    acc[key] = Number.isFinite(parsed) ? parsed : undefined;
+    return acc;
+  }, {});
+};
+
+const normalizePremiumPlan = (raw: unknown): PremiumPlan => {
+  const item = asRecord(raw);
+  return {
+    code: String(item.code || item.planCode || ""),
+    title: item.title ? String(item.title) : undefined,
+    name: String(item.name || item.title || "Premium"),
+    description: item.description ? String(item.description) : undefined,
+    price: Number(item.price || 0) || 0,
+    durationDays: Number(item.durationDays || 0) || 0,
+    isRecommended: Boolean(item.isRecommended),
+    isDefault: Boolean(item.isDefault || item.default),
+    disable: Boolean(item.disable),
+    createdAt: item.createdAt ? String(item.createdAt) : undefined,
+    benefits: Array.isArray(item.benefits)
+      ? item.benefits.filter((entry: unknown) => typeof entry === "string")
+      : [],
+    features: normalizeFeatureObject(item.features),
+    limits: normalizeLimitObject(item.limits),
+  };
+};
+
+const normalizePremiumPlanPayload = (
+  payload: AdminPremiumPlanPayload,
+): AdminPremiumPlanPayload => ({
+  code: payload.code.trim(),
+  title: payload.title?.trim() || payload.name.trim(),
+  name: payload.name.trim(),
+  description: payload.description?.trim() || "",
+  price: Number(payload.price || 0),
+  durationDays: Number(payload.durationDays || 0),
+  isRecommended: Boolean(payload.isRecommended),
+  disable: Boolean(payload.disable),
+  benefits: Array.isArray(payload.benefits)
+    ? payload.benefits
+        .map((item) => String(item || "").trim())
+        .filter(Boolean)
+    : [],
+  features: Object.entries(payload.features || {}).reduce<PremiumPlanFeatures>(
+    (acc, [key, value]) => {
+      acc[key] = Boolean(value);
+      return acc;
+    },
+    {},
+  ),
+  limits: Object.entries(payload.limits || {}).reduce<PremiumPlanLimits>(
+    (acc, [key, value]) => {
+      const parsed = Number(value);
+      acc[key] = Number.isFinite(parsed) ? parsed : undefined;
+      return acc;
+    },
+    {},
+  ),
+});
+
+const pickPayload = <T>(raw: unknown): T => {
+  const source = asRecord(raw);
+  const data = source.data;
+  if (data && typeof data === "object") return data as T;
+  const result = source.result;
+  if (result && typeof result === "object") return result as T;
+  if (raw !== undefined) {
+    return raw as T;
+  }
+  return {} as T;
+};
+
+const getPremiumPlans = async (): Promise<PremiumPlan[]> => {
+  const { data } = await api.get("/admin/premium/plans");
+  const payload = pickPayload<Record<string, unknown>>(data);
+  const plansRaw = Array.isArray(payload?.plans)
+    ? payload.plans
+    : Array.isArray(payload)
+      ? payload
+      : [];
+
+  return plansRaw.map(normalizePremiumPlan);
+};
+
+const createPremiumPlan = async (
+  payload: AdminPremiumPlanPayload,
+): Promise<PremiumPlan> => {
+  const requestBody = normalizePremiumPlanPayload(payload);
+  const { data } = await api.post("/admin/premium/plans", requestBody);
+  const responsePayload = pickPayload<Record<string, unknown>>(data);
+  const rawPlan =
+    responsePayload?.plan && typeof responsePayload.plan === "object"
+      ? responsePayload.plan
+      : responsePayload;
+  return normalizePremiumPlan(rawPlan);
+};
+
+const updatePremiumPlan = async (
+  planCode: string,
+  payload: Omit<AdminPremiumPlanPayload, "code">,
+): Promise<PremiumPlan> => {
+  const requestBody = normalizePremiumPlanPayload({
+    ...payload,
+    code: planCode,
+  });
+  const { data } = await api.put(`/admin/premium/plans/${planCode}`, requestBody);
+  const responsePayload = pickPayload<Record<string, unknown>>(data);
+  const rawPlan =
+    responsePayload?.plan && typeof responsePayload.plan === "object"
+      ? responsePayload.plan
+      : responsePayload;
+  return normalizePremiumPlan(rawPlan);
+};
+
+const deletePremiumPlan = async (planCode: string) => {
+  const { data } = await api.delete(`/admin/premium/plans/${planCode}`);
+  return data;
+};
+
+const setDefaultPremiumPlan = async (planCode: string): Promise<PremiumPlan> => {
+  const { data } = await api.patch(`/admin/premium/plans/${planCode}/default`);
+  const responsePayload = pickPayload<Record<string, unknown>>(data);
+  const rawPlan =
+    responsePayload?.plan && typeof responsePayload.plan === "object"
+      ? responsePayload.plan
+      : responsePayload;
+  return normalizePremiumPlan(rawPlan);
+};
+
+const getPremiumConfig = async (): Promise<AdminPremiumConfig> => {
+  const { data } = await api.get("/admin/premium/config");
+  const payload = pickPayload<Record<string, unknown>>(data);
+  const config =
+    payload?.config && typeof payload.config === "object"
+      ? payload.config
+      : payload;
+  return config && typeof config === "object" ? config : {};
+};
+
+const updatePremiumConfig = async (
+  payload: AdminPremiumConfig,
+): Promise<AdminPremiumConfig> => {
+  const { data } = await api.put("/admin/premium/config", payload);
+  const responsePayload = pickPayload<Record<string, unknown>>(data);
+  const config =
+    responsePayload?.config && typeof responsePayload.config === "object"
+      ? responsePayload.config
+      : responsePayload;
+  return config && typeof config === "object"
+    ? config
+    : {};
+};
+
 // ===================== Stats =====================
 export interface AdminStats {
   totalUsers: number;
@@ -438,5 +666,12 @@ export const adminService = {
   updatePostPrivacy,
   deletePost,
   getPostStats,
+  getPremiumPlans,
+  createPremiumPlan,
+  updatePremiumPlan,
+  deletePremiumPlan,
+  setDefaultPremiumPlan,
+  getPremiumConfig,
+  updatePremiumConfig,
   getStats,
 };

@@ -1,7 +1,32 @@
 export type PremiumErrorCode =
   | "PREMIUM_AI_REQUIRED"
+  | "PREMIUM_POST_DISABLED"
+  | "PREMIUM_REEL_DISABLED"
+  | "PREMIUM_STORY_DISABLED"
+  | "PREMIUM_INTERACTION_DISABLED"
   | "PREMIUM_LIMIT_EXCEEDED"
   | "PREMIUM_VIDEO_DURATION_EXCEEDED";
+
+export interface PremiumPlanFeatures {
+  aiAssistant?: boolean;
+  canCreatePosts?: boolean;
+  canInteract?: boolean;
+  canUseReels?: boolean;
+  canUseStories?: boolean;
+  advancedAiSummary?: boolean;
+  prioritySupport?: boolean;
+  [key: string]: boolean | undefined;
+}
+
+export interface PremiumPlanLimits {
+  postsPerDay?: number;
+  reelsPerDay?: number;
+  storiesPerDay?: number;
+  postVideoDurationSeconds?: number;
+  reelVideoDurationSeconds?: number;
+  storyVideoDurationSeconds?: number;
+  [key: string]: number | undefined;
+}
 
 export interface PremiumTransaction {
   id: string;
@@ -22,6 +47,8 @@ export interface PremiumOverview {
   isPremium: boolean;
   tierName?: string;
   premiumExpiryDate?: string;
+  activePlanCode?: string;
+  activePlan?: PremiumPlan;
   features: string[];
   limits: Record<string, string | number | boolean | null | undefined>;
   recentTransactions: PremiumTransaction[];
@@ -29,13 +56,18 @@ export interface PremiumOverview {
 
 export interface PremiumPlan {
   code: string;
+  title?: string;
   name: string;
   price: number;
   durationDays: number;
   isRecommended?: boolean;
+  isDefault?: boolean;
+  disable?: boolean;
+  createdAt?: string;
   description?: string;
-  features?: string[];
-  limits?: Record<string, string | number | boolean | null | undefined>;
+  benefits?: string[];
+  features?: PremiumPlanFeatures;
+  limits?: PremiumPlanLimits;
 }
 
 export interface PremiumPaymentTemplate {

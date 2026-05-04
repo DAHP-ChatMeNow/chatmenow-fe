@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock3, Crown, Loader2, ReceiptText } from "lucide-react";
 import { usePremiumHistory } from "@/hooks/use-premium";
 
 const LIMIT = 10;
@@ -14,26 +13,45 @@ const formatDate = (value?: string) => {
   return date.toLocaleString("vi-VN");
 };
 
+const formatAmount = (value?: number) => {
+  if (typeof value !== "number") return "--";
+  return `${value.toLocaleString("vi-VN")}đ`;
+};
+
+const getStatusMeta = (status?: string) => {
+  const normalized = String(status || "pending").toLowerCase();
+  if (["success", "completed", "paid"].includes(normalized)) {
+    return { label: "Thành công", className: "bg-emerald-100 text-emerald-700" };
+  }
+  if (["failed", "cancelled", "canceled"].includes(normalized)) {
+    return { label: "Thất bại", className: "bg-red-100 text-red-700" };
+  }
+  return { label: "Đang xử lý", className: "bg-amber-100 text-amber-700" };
+};
+
 export default function PremiumHistoryPage() {
   const [page, setPage] = useState(1);
   const { data, isLoading, isError } = usePremiumHistory({ page, limit: LIMIT });
+  const totalPages = Math.max(data?.totalPages || 1, 1);
 
   return (
-    <div className="max-w-4xl px-4 py-5 mx-auto space-y-4 md:px-6 md:py-8">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-xl font-bold text-slate-900">Lịch sử giao dịch Premium</h1>
-        <div className="flex items-center gap-2">
-          <Link href="/settings/premium" className="text-sm font-semibold text-blue-600">
-            My Premium
-          </Link>
-          <Link href="/settings/premium/plans" className="text-sm font-semibold text-blue-600">
-            Danh sách gói
-          </Link>
+    <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-5 md:px-6 md:py-8">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
+              <ReceiptText className="h-6 w-6 text-blue-600" />
+              Lịch sử giao dịch Premium
+            </h1>
+            <p className="mt-1 text-sm text-slate-600">
+              Theo dõi các giao dịch nâng cấp gói và trạng thái thanh toán.
+            </p>
+          </div>
         </div>
-      </div>
+      </section>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-16 text-slate-500">
+        <div className="flex items-center justify-center rounded-2xl border border-slate-200 bg-white py-16 text-slate-500">
           <Loader2 className="w-5 h-5 mr-2 animate-spin" /> Đang tải lịch sử...
         </div>
       ) : isError || !data ? (
@@ -46,57 +64,83 @@ export default function PremiumHistoryPage() {
         </div>
       ) : (
         <>
-          <div className="overflow-hidden bg-white border rounded-2xl border-slate-200">
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 text-slate-600">
                 <tr>
-                  <th className="px-3 py-2 text-left">Mã GD</th>
-                  <th className="px-3 py-2 text-left">Gói</th>
-                  <th className="px-3 py-2 text-right">Số tiền</th>
-                  <th className="px-3 py-2 text-left">Trạng thái</th>
-                  <th className="px-3 py-2 text-left">Thời gian</th>
+                  <th className="px-4 py-3 text-left font-semibold">Mã giao dịch</th>
+                  <th className="px-4 py-3 text-left font-semibold">Gói</th>
+                  <th className="px-4 py-3 text-right font-semibold">Số tiền</th>
+                  <th className="px-4 py-3 text-left font-semibold">Trạng thái</th>
+                  <th className="px-4 py-3 text-left font-semibold">Thời gian</th>
                 </tr>
               </thead>
               <tbody>
-                {data.transactions.map((tx) => (
-                  <tr key={tx.id} className="border-t border-slate-100">
-                    <td className="px-3 py-2">{tx.transactionId || tx.id}</td>
-                    <td className="px-3 py-2">{tx.planName || tx.planCode || "Premium"}</td>
-                    <td className="px-3 py-2 text-right">
-                      {typeof tx.amount === "number" ? tx.amount.toLocaleString("vi-VN") : "--"}
-                    </td>
-                    <td className="px-3 py-2">{tx.status || "pending"}</td>
-                    <td className="px-3 py-2">{formatDate(tx.createdAt)}</td>
-                  </tr>
-                ))}
+                {data.transactions.map((tx) => {
+                  const statusMeta = getStatusMeta(tx.status);
+                  return (
+                    <tr key={tx.id} className="border-t border-slate-100 hover:bg-slate-50/70">
+                      <td className="px-4 py-3 font-mono text-xs text-slate-700">
+                        {tx.transactionId || tx.id}
+                      </td>
+                      <td className="px-4 py-3 font-medium text-slate-900">
+                        <span className="inline-flex items-center gap-1.5">
+                          <Crown className="h-3.5 w-3.5 text-amber-500" />
+                          {tx.planName || tx.planCode || "Premium"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-slate-900">
+                        {formatAmount(tx.amount)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusMeta.className}`}
+                        >
+                          {statusMeta.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        <span className="inline-flex items-center gap-1.5">
+                          <Clock3 className="h-3.5 w-3.5" />
+                          {formatDate(tx.createdAt)}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-slate-500">
-              Trang {data.page}/{Math.max(data.totalPages, 1)} - Tổng {data.total} giao dịch
-            </p>
+          <div className="flex flex-wrap items-end justify-between gap-3 border-t border-slate-200 px-1 pt-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Trang</p>
+              <p className="text-sm font-semibold text-slate-900">
+                {data.page}/{totalPages}
+              </p>
+            </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
                 disabled={page <= 1}
-                className="px-3 py-1.5 text-sm border rounded-lg border-slate-300 disabled:opacity-50"
+                className="inline-flex items-center gap-1 border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Trước
+                <ChevronLeft className="h-4 w-4" />
+                Trái
               </button>
               <button
                 type="button"
                 onClick={() =>
                   setPage((prev) =>
-                    prev < Math.max(data.totalPages, 1) ? prev + 1 : prev,
+                    prev < totalPages ? prev + 1 : prev,
                   )
                 }
-                disabled={page >= Math.max(data.totalPages, 1)}
-                className="px-3 py-1.5 text-sm border rounded-lg border-slate-300 disabled:opacity-50"
+                disabled={page >= totalPages}
+                className="inline-flex items-center gap-1 border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Sau
+                Phải
+                <ChevronRight className="h-4 w-4" />
               </button>
             </div>
           </div>
