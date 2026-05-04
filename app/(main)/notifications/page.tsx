@@ -96,6 +96,7 @@ export default function NotificationsPage() {
   const [approvingIds, setApprovingIds] = useState<string[]>([]);
   const notifications = notificationsData?.notifications || [];
   const unreadNotifications = notifications.filter((noti) => !noti.isRead);
+  const hasUnreadNotifications = unreadNotifications.length > 0;
 
   const handleAcceptFriendRequest = (
     notificationId: string,
@@ -163,7 +164,7 @@ export default function NotificationsPage() {
           size="sm"
           className="font-medium text-blue-600"
           onClick={() => markAllAsRead()}
-          disabled={isMarkingAll || notifications.length === 0}
+          disabled={isMarkingAll || !hasUnreadNotifications}
         >
           Đánh dấu đã đọc tất cả
         </Button>
@@ -238,7 +239,7 @@ export default function NotificationsPage() {
                     <p className="text-[12px] text-slate-400 font-medium">
                       {formatTime(noti.createdAt)}
                     </p>
-                    {noti.type === "friend_request" && (
+                    {noti.type === "friend_request" && !noti.isRead && (
                       <div className="flex gap-2 mt-3">
                         <Button
                           size="sm"

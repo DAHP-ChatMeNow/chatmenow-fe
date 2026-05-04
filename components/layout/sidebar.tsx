@@ -33,8 +33,7 @@ const getCurrentNotificationCount = (
 
   const unreadTotal = notifications.filter((item) => !item?.isRead).length;
 
-  // Fallback về tổng thông báo hiện có nếu tất cả đã đọc.
-  return unreadTotal > 0 ? unreadTotal : notifications.length;
+  return unreadTotal;
 };
 
 export function Sidebar({ mode = "desktop" }: { mode?: "desktop" | "mobile" }) {
